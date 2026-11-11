@@ -144,7 +144,8 @@ const MIN_PASSWORD = 10
 
 /** Each person chooses their own password; the other can never see or change it. */
 function PasswordCard() {
-  const { api } = useApp()
+  const { api, setWorld } = useApp()
+  const world = useWorld()
   const [password, setPassword] = useState('')
   const [again, setAgain] = useState('')
   const [busy, setBusy] = useState(false)
@@ -160,6 +161,8 @@ function PasswordCard() {
     setError(null)
     try {
       await api.changePassword(password)
+      const me = { ...world.me, own_password: true }
+      setWorld({ ...world, me, members: world.members.map((m) => (m.id === me.id ? me : m)) })
       setPassword('')
       setAgain('')
       setSaved(true)
@@ -172,10 +175,13 @@ function PasswordCard() {
 
   return (
     <form onSubmit={submit} className="paper mt-6 space-y-5 p-5 sm:p-7" noValidate>
-      <div>
+      <div id="password">
         <h2 className="text-2xl text-peacock-deep">Your password</h2>
         <p className="mt-1 text-sm text-ink-soft">
-          Only you know it. A few unrelated words strung together are easy to remember and hard to guess.
+          {world.me.own_password
+            ? 'Only you know it. Nobody else in this little world can see or change it.'
+            : 'You are still using the password you were given. Choose your own, so only you hold this key.'}{' '}
+          A few unrelated words strung together are easy to remember and hard to guess.
         </p>
       </div>
       <div>

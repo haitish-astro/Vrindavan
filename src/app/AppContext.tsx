@@ -10,7 +10,7 @@ import {
 } from 'react'
 import { friendlyError, type Api } from '../data/api'
 import type { SessionUser, World } from '../lib/types'
-import { forgetGreeting, rememberGreeting } from '../lib/local'
+import { forgetDevice, rememberGreeting } from '../lib/local'
 
 interface AppState {
   api: Api
@@ -80,7 +80,7 @@ export function AppProvider({ api, children }: { api: Api; children: ReactNode }
   }, [])
   const reloadWorld = useCallback(() => setReloadKey((k) => k + 1), [])
   const signOut = useCallback(async () => {
-    forgetGreeting()
+    forgetDevice()
     await api.signOut()
     setUser(null)
   }, [api])

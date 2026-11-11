@@ -1,5 +1,12 @@
 import { createClient, type Session } from '@supabase/supabase-js'
 import type {
+  ChatMessage,
+  ChatRead,
+  DoodleStroke,
+  Letter,
+  LetterReply,
+  QuickNote,
+  Reaction,
   Memory,
   MemoryNote,
   Milestone,
@@ -13,6 +20,13 @@ import { FriendlyError, type Api } from './api'
 const BUCKET = 'memories'
 const SIGNED_URL_SECONDS = 60 * 60
 const MEMORY_SELECT = '*, photos:memory_photos(*), notes:memory_notes(*)'
+const LETTER_SELECT = '*, replies:letter_replies(*), opens:letter_opens(*)'
+
+function sortLetter(letter: Letter): Letter {
+  letter.replies = [...(letter.replies ?? [])].sort((a, b) => a.created_at.localeCompare(b.created_at))
+  letter.opens = letter.opens ?? []
+  return letter
+}
 
 function toUser(session: Session | null): SessionUser | null {
   if (!session?.user) return null
@@ -169,7 +183,11 @@ export async function createSupabaseApi(url: string, anonKey: string): Promise<A
 
     async changePassword(newPassword) {
       const { error } = await sb.auth.updateUser({ password: newPassword })
-      if (!error) return
+      if (!error) {
+        const marked = await sb.rpc('mark_own_password')
+        if (marked.error) console.error('Could not record password change', marked.error.message)
+        return
+      }
       if (error.code === 'weak_password') {
         throw new FriendlyError('That password is too easy to guess. Try a longer one.')
       }
@@ -233,7 +251,7 @@ export async function createSupabaseApi(url: string, anonKey: string): Promise<A
       if (!spaceResult.data) return null
 
       const ids = (membersResult.data ?? []).map((m) => m.user_id as string)
-      const profilesResult = await sb.from('profiles').select('id, display_name').in('id', ids)
+      const profilesResult = await sb.from('profiles').select('*').in('id', ids)
       check(profilesResult.error, 'We could not open your little world. Please try again.')
       const members = (profilesResult.data ?? []) as Profile[]
       const me = members.find((p) => p.id === userId) ?? { id: userId, display_name: null }
@@ -257,7 +275,7 @@ export async function createSupabaseApi(url: string, anonKey: string): Promise<A
         .from('profiles')
         .update({ display_name: name })
         .eq('id', userId)
-        .select('id, display_name')
+        .select('*')
         .single()
       check(error, 'Your name could not be saved.')
       return data as Profile
@@ -407,6 +425,263 @@ export async function createSupabaseApi(url: string, anonKey: string): Promise<A
       const { error } = await sb.from('timeline_milestones').delete().eq('id', milestone.id)
       check(error, 'This milestone could not be removed.')
       await removeFiles([milestone.photo_path])
+    },
+
+    // ── letters ──
+    async listLetters(spaceId) {
+      const { data, error } = await sb
+        .from('letters')
+        .select(LETTER_SELECT)
+        .eq('space_id', spaceId)
+        .order('updated_at', { ascending: false })
+      check(error, 'We could not load your letters.')
+      return ((data ?? []) as Letter[]).map(sortLetter)
+    },
+
+    async getLetter(id) {
+      const { data, error } = await sb.from('letters').select(LETTER_SELECT).eq('id', id).maybeSingle()
+      check(error, 'We could not open this letter.')
+      return data ? sortLetter(data as Letter) : null
+    },
+
+    async saveLetter(spaceId, existing, input) {
+      const userId = await requireUserId()
+      const query = existing
+        ? sb.from('letters').update(input).eq('id', existing.id)
+        : sb.from('letters').insert({ ...input, space_id: spaceId, author_id: userId })
+      const { data, error } = await query.select(LETTER_SELECT).single()
+      check(
+        error,
+        input.status === 'sent'
+          ? 'Your letter could not be sent. Nothing is lost — please try again.'
+          : 'Your letter could not be saved. Nothing is lost — please try again.',
+      )
+      return sortLetter(data as Letter)
+    },
+
+    async deleteLetter(id) {
+      const { error } = await sb.from('letters').delete().eq('id', id)
+      check(error, 'This letter could not be removed.')
+    },
+
+    async markLetterOpened(letter) {
+      const userId = await requireUserId()
+      const { error } = await sb
+        .from('letter_opens')
+        .upsert(
+          { letter_id: letter.id, space_id: letter.space_id, user_id: userId },
+          { onConflict: 'letter_id,user_id', ignoreDuplicates: true },
+        )
+      if (error) console.error('Could not record letter opening', error.message)
+    },
+
+    async addLetterReply(letter, body) {
+      const userId = await requireUserId()
+      const { data, error } = await sb
+        .from('letter_replies')
+        .insert({ letter_id: letter.id, space_id: letter.space_id, author_id: userId, body })
+        .select('*')
+        .single()
+      check(error, 'Your reply could not be sent.')
+      return data as LetterReply
+    },
+
+    async deleteLetterReply(id) {
+      const { error } = await sb.from('letter_replies').delete().eq('id', id)
+      check(error, 'This reply could not be removed.')
+    },
+
+    // ── little notes ──
+    async listQuickNotes(spaceId, limit = 60) {
+      const { data, error } = await sb
+        .from('quick_notes')
+        .select('*')
+        .eq('space_id', spaceId)
+        .order('created_at', { ascending: false })
+        .limit(limit)
+      check(error, 'We could not load your little notes.')
+      return (data ?? []) as QuickNote[]
+    },
+
+    async addQuickNote(spaceId, body) {
+      const userId = await requireUserId()
+      const { data, error } = await sb
+        .from('quick_notes')
+        .insert({ space_id: spaceId, author_id: userId, body })
+        .select('*')
+        .single()
+      check(error, 'Your note could not be saved.')
+      return data as QuickNote
+    },
+
+    async deleteQuickNote(id) {
+      const { error } = await sb.from('quick_notes').delete().eq('id', id)
+      check(error, 'This note could not be removed.')
+    },
+
+    // ── hearts ──
+    async listReactions(type, targetIds) {
+      if (targetIds.length === 0) return []
+      const { data, error } = await sb
+        .from('reactions')
+        .select('id, target_type, target_id, user_id')
+        .eq('target_type', type)
+        .in('target_id', targetIds)
+      if (error) {
+        console.error('Could not load hearts', error.message)
+        return []
+      }
+      return (data ?? []) as Reaction[]
+    },
+
+    async setHeart(spaceId, type, targetId, on) {
+      const userId = await requireUserId()
+      const { error } = on
+        ? await sb
+            .from('reactions')
+            .upsert(
+              { space_id: spaceId, user_id: userId, target_type: type, target_id: targetId },
+              { onConflict: 'target_type,target_id,user_id', ignoreDuplicates: true },
+            )
+        : await sb
+            .from('reactions')
+            .delete()
+            .eq('target_type', type)
+            .eq('target_id', targetId)
+            .eq('user_id', userId)
+      check(error, 'Your heart could not be saved.')
+    },
+
+    // ── chat ──
+    async listMessages(spaceId, before, limit = 60) {
+      let query = sb
+        .from('messages')
+        .select('*')
+        .eq('space_id', spaceId)
+        .order('created_at', { ascending: false })
+        .limit(limit)
+      if (before) query = query.lt('created_at', before)
+      const { data, error } = await query
+      check(error, 'We could not load your messages.')
+      return ((data ?? []) as ChatMessage[]).reverse()
+    },
+
+    async sendMessage(spaceId, body) {
+      const userId = await requireUserId()
+      const { data, error } = await sb
+        .from('messages')
+        .insert({ space_id: spaceId, sender_id: userId, body })
+        .select('*')
+        .single()
+      check(error, 'Your message could not be sent.')
+      return data as ChatMessage
+    },
+
+    async deleteMessage(id) {
+      const { error } = await sb.from('messages').delete().eq('id', id)
+      check(error, 'This message could not be unsent.')
+    },
+
+    async listChatReads(spaceId) {
+      const { data, error } = await sb.from('chat_reads').select('user_id, last_read_at').eq('space_id', spaceId)
+      if (error) return []
+      return (data ?? []) as ChatRead[]
+    },
+
+    async markChatRead() {
+      const { error } = await sb.rpc('mark_chat_read')
+      if (error) console.error('Could not mark chat as read', error.message)
+    },
+
+    async countUnread(spaceId, since) {
+      const userId = await requireUserId()
+      let query = sb
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('space_id', spaceId)
+        .neq('sender_id', userId)
+      if (since) query = query.gt('created_at', since)
+      const { count, error } = await query
+      return error ? 0 : (count ?? 0)
+    },
+
+    subscribeChat(spaceId, handlers) {
+      const channel = sb
+        .channel(`chat:${spaceId}:${crypto.randomUUID()}`)
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'messages', filter: `space_id=eq.${spaceId}` },
+          (payload) => handlers.onMessage?.(payload.new as ChatMessage),
+        )
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, (payload) => {
+          const id = (payload.old as { id?: string }).id
+          if (id) handlers.onDelete?.(id)
+        })
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'chat_reads', filter: `space_id=eq.${spaceId}` },
+          (payload) => {
+            const row = payload.new as Partial<ChatRead>
+            if (row?.user_id && row.last_read_at) {
+              handlers.onRead?.({ user_id: row.user_id, last_read_at: row.last_read_at })
+            }
+          },
+        )
+        .subscribe()
+      return () => {
+        void sb.removeChannel(channel)
+      }
+    },
+
+    // ── doodle board ──
+    async listStrokes(spaceId) {
+      const { data, error } = await sb
+        .from('doodle_strokes')
+        .select('*')
+        .eq('space_id', spaceId)
+        .order('created_at', { ascending: true })
+        .limit(3000)
+      check(error, 'We could not load the doodle board.')
+      return (data ?? []) as DoodleStroke[]
+    },
+
+    async addStroke(spaceId, stroke) {
+      const userId = await requireUserId()
+      const { data, error } = await sb
+        .from('doodle_strokes')
+        .insert({ ...stroke, space_id: spaceId, author_id: userId })
+        .select('*')
+        .single()
+      check(error, 'That stroke could not be saved.')
+      return data as DoodleStroke
+    },
+
+    async deleteStroke(id) {
+      const { error } = await sb.from('doodle_strokes').delete().eq('id', id)
+      check(error, 'That stroke could not be undone.')
+    },
+
+    async clearBoard() {
+      const { error } = await sb.rpc('clear_doodle_board')
+      check(error, 'The board could not be cleared.')
+    },
+
+    subscribeDoodles(spaceId, handlers) {
+      const channel = sb
+        .channel(`doodles:${spaceId}:${crypto.randomUUID()}`)
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'doodle_strokes', filter: `space_id=eq.${spaceId}` },
+          (payload) => handlers.onStroke?.(payload.new as DoodleStroke),
+        )
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'doodle_strokes' }, (payload) => {
+          const id = (payload.old as { id?: string }).id
+          if (id) handlers.onDelete?.(id)
+        })
+        .subscribe()
+      return () => {
+        void sb.removeChannel(channel)
+      }
     },
 
     photoUrl(path) {

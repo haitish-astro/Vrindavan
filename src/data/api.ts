@@ -1,5 +1,17 @@
 import type { PreparedImage } from '../lib/images'
 import type {
+  ChatHandlers,
+  ChatMessage,
+  ChatRead,
+  DoodleHandlers,
+  DoodleInput,
+  DoodleStroke,
+  Letter,
+  LetterInput,
+  LetterReply,
+  QuickNote,
+  Reaction,
+  ReactionTarget,
   Memory,
   MemoryInput,
   MemoryNote,
@@ -71,6 +83,42 @@ export interface Api {
     image?: PreparedImage | null,
   ): Promise<Milestone>
   deleteMilestone(milestone: Milestone): Promise<void>
+
+  // ── letters ──
+  listLetters(spaceId: string): Promise<Letter[]>
+  getLetter(id: string): Promise<Letter | null>
+  saveLetter(spaceId: string, existing: Letter | undefined, input: LetterInput): Promise<Letter>
+  deleteLetter(id: string): Promise<void>
+  markLetterOpened(letter: Pick<Letter, 'id' | 'space_id'>): Promise<void>
+  addLetterReply(letter: Pick<Letter, 'id' | 'space_id'>, body: string): Promise<LetterReply>
+  deleteLetterReply(id: string): Promise<void>
+
+  // ── little notes ──
+  listQuickNotes(spaceId: string, limit?: number): Promise<QuickNote[]>
+  addQuickNote(spaceId: string, body: string): Promise<QuickNote>
+  deleteQuickNote(id: string): Promise<void>
+
+  // ── hearts ──
+  listReactions(type: ReactionTarget, targetIds: string[]): Promise<Reaction[]>
+  setHeart(spaceId: string, type: ReactionTarget, targetId: string, on: boolean): Promise<void>
+
+  // ── chat ──
+  /** Oldest first. `before` loads the page of messages older than that time. */
+  listMessages(spaceId: string, before?: string, limit?: number): Promise<ChatMessage[]>
+  sendMessage(spaceId: string, body: string): Promise<ChatMessage>
+  deleteMessage(id: string): Promise<void>
+  listChatReads(spaceId: string): Promise<ChatRead[]>
+  markChatRead(): Promise<void>
+  countUnread(spaceId: string, since: string | null): Promise<number>
+  /** Live updates while subscribed. Returns the unsubscribe function. */
+  subscribeChat(spaceId: string, handlers: ChatHandlers): () => void
+
+  // ── doodle board ──
+  listStrokes(spaceId: string): Promise<DoodleStroke[]>
+  addStroke(spaceId: string, stroke: DoodleInput): Promise<DoodleStroke>
+  deleteStroke(id: string): Promise<void>
+  clearBoard(): Promise<void>
+  subscribeDoodles(spaceId: string, handlers: DoodleHandlers): () => void
 
   // ── private photos ──
   /** A short-lived link to a private photo. */

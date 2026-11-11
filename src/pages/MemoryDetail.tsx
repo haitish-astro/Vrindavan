@@ -10,6 +10,7 @@ import { uploadPhotos, type UploadStatus } from '../lib/uploads'
 import type { Memory, MemoryNote, Photo } from '../lib/types'
 import { LotusDivider } from '../components/Decor'
 import { UploadProgress } from '../components/PhotoPicker'
+import { HeartButton, useReactions } from '../components/Hearts'
 import {
   Button,
   ButtonLink,
@@ -32,6 +33,7 @@ export default function MemoryDetail() {
   const arrival = location.state as { failedPhotos?: number; noteFailed?: boolean } | null
 
   const { data: memory, loading, error, reload, setData } = useAsync(() => api.getMemory(id), [api, id])
+  const hearts = useReactions('memory', memory ? [memory.id] : [])
 
   const [viewing, setViewing] = useState<number | null>(null)
   const [upload, setUpload] = useState<UploadStatus | null>(null)
@@ -187,7 +189,15 @@ export default function MemoryDetail() {
               {memory.description}
             </p>
           )}
-          <LotusDivider className="mt-6" />
+          <div className="mt-4 flex justify-center">
+            <HeartButton
+              type="memory"
+              targetId={memory.id}
+              reactions={hearts.forTarget(memory.id)}
+              onChange={(next) => hearts.replace(memory.id, next)}
+            />
+          </div>
+          <LotusDivider className="mt-3" />
         </div>
 
         {/* add photographs */}

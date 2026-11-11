@@ -6,6 +6,8 @@ export interface SessionUser {
 export interface Profile {
   id: string
   display_name: string | null
+  /** false until this person has chosen their own password */
+  own_password?: boolean
 }
 
 export interface Space {
@@ -89,6 +91,94 @@ export interface MilestoneInput {
   happened_on: string
   description: string | null
   location: string | null
+}
+
+export type ReactionTarget = 'memory' | 'letter' | 'quick_note'
+
+export interface Reaction {
+  id: string
+  target_type: ReactionTarget
+  target_id: string
+  user_id: string
+}
+
+export interface LetterReply {
+  id: string
+  letter_id: string
+  author_id: string
+  body: string
+  created_at: string
+}
+
+export interface LetterOpen {
+  letter_id: string
+  user_id: string
+  opened_at: string
+}
+
+export interface Letter {
+  id: string
+  space_id: string
+  author_id: string
+  title: string | null
+  body: string
+  status: 'draft' | 'sent'
+  sent_at: string | null
+  created_at: string
+  updated_at: string
+  replies: LetterReply[]
+  opens: LetterOpen[]
+}
+
+export interface LetterInput {
+  title: string | null
+  body: string
+  status: 'draft' | 'sent'
+}
+
+export interface QuickNote {
+  id: string
+  space_id: string
+  author_id: string
+  body: string
+  created_at: string
+}
+
+export interface ChatMessage {
+  id: string
+  space_id: string
+  sender_id: string
+  body: string
+  created_at: string
+}
+
+export interface ChatRead {
+  user_id: string
+  last_read_at: string
+}
+
+export interface ChatHandlers {
+  onMessage?: (message: ChatMessage) => void
+  onDelete?: (id: string) => void
+  onRead?: (read: ChatRead) => void
+}
+
+export interface DoodleStroke {
+  id: string
+  space_id: string
+  author_id: string
+  color: string
+  width: number
+  /** [x1, y1, x2, y2, …], each between 0 and 1 */
+  points: number[]
+  created_at: string
+}
+
+export type DoodleInput = Pick<DoodleStroke, 'color' | 'width' | 'points'>
+
+export interface DoodleHandlers {
+  onStroke?: (stroke: DoodleStroke) => void
+  onDelete?: (id: string) => void
 }
 
 export type SpaceSettings = Pick<Space, 'first_met_on' | 'welcome_greeting' | 'featured_message'>

@@ -5,6 +5,7 @@ import { useApp } from '../app/AppContext'
 import { friendlyError } from '../data/api'
 import { Feather, Sparkles } from '../components/Decor'
 import { Button, Label, Page } from '../components/ui'
+import { rememberEmail, rememberedEmail } from '../lib/local'
 
 const RESEND_SECONDS = 60
 const looksLikeEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
@@ -15,7 +16,8 @@ const looksLikeEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valu
  */
 export default function Login() {
   const { api, user } = useApp()
-  const [email, setEmail] = useState('')
+  const [savedEmail] = useState(rememberedEmail)
+  const [email, setEmail] = useState(savedEmail)
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [code, setCode] = useState('')
@@ -48,6 +50,7 @@ export default function Login() {
     setError(null)
     try {
       await api.signInWithPassword(address, password)
+      rememberEmail(address)
       // AppContext notices the new session and <Navigate> above takes us home.
     } catch (e) {
       setError(friendlyError(e))
@@ -82,6 +85,7 @@ export default function Login() {
     setError(null)
     try {
       await api.verifyCode(email, digits)
+      rememberEmail(email)
     } catch (e) {
       setError(friendlyError(e))
       setBusy(false)
@@ -138,6 +142,7 @@ export default function Login() {
                     id="password"
                     type={showPassword ? 'text' : 'password'}
                     autoComplete="current-password"
+                    autoFocus={Boolean(savedEmail)}
                     required
                     className="field pr-12"
                     value={password}
@@ -158,6 +163,21 @@ export default function Login() {
               <Button type="submit" busy={busy} className="w-full">
                 Open the garden ♡
               </Button>
+              {savedEmail && email === savedEmail && (
+                <p className="text-center text-xs text-ink-soft">
+                  This device remembers your email.{' '}
+                  <button
+                    type="button"
+                    className="font-semibold text-peacock-deep"
+                    onClick={() => {
+                      rememberEmail(null)
+                      setEmail('')
+                    }}
+                  >
+                    Forget it
+                  </button>
+                </p>
+              )}
               <p className="text-center text-sm">
                 <button type="button" className="font-semibold text-peacock-deep" onClick={() => go('link')}>
                   Forgot your password?

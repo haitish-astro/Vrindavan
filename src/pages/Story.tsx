@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { motion } from 'motion/react'
-import { MapPin, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, MapPin, Pencil, Plus, Trash2 } from 'lucide-react'
 import { nameOf, useApp, useWorld } from '../app/AppContext'
 import { friendlyError } from '../data/api'
 import { useAsync } from '../lib/hooks'
@@ -101,6 +101,12 @@ export default function Story() {
 
   return (
     <Page>
+      <Link
+        to="/world"
+        className="mb-3 inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-ink-soft hover:text-peacock-deep"
+      >
+        <ArrowLeft className="size-4" aria-hidden /> Our World
+      </Link>
       <PageHeader
         eyebrow="Our story"
         title="How it all unfolded"

@@ -14,8 +14,8 @@ private storage) behind it, hosted as a static site on GitHub Pages.
 | --- | --- | --- |
 | 1. Foundation | Done | Theme, welcome experience, invite-only sign-in, private data access, navigation, settings |
 | 2. Core memories | Done | Add Memory, multi-photo upload, gallery, memory pages, notes from both, timeline |
-| 3. Communication | Next | Love letters, little notes, reactions |
-| 4. Shared experiences | Later | Special dates, countdowns, bucket list |
+| 3. Communication | Done | Love letters with envelope opening, little notes, hearts, replies, live private chat, shared doodle board |
+| 4. Shared experiences | Next | Special dates, countdowns, bucket list |
 | 5. Romantic polish | Later | Surprises, On This Day, hidden details |
 
 ---
@@ -26,12 +26,13 @@ Do these once, in order. Roughly 15 minutes.
 
 ### 1. Create the database (Supabase → SQL Editor)
 
-Run the two files in `supabase/migrations/` **in order** — paste each into a new query and press Run:
+Run the files in `supabase/migrations/` **in order** — paste each into a new query and press Run:
 
 1. `20261111000100_foundation.sql`
 2. `20261111000200_memories.sql`
+3. `20261112000300_letters_chat.sql` (letters, notes, hearts, chat, doodle board)
 
-Both are safe to run more than once. (If your Supabase project is linked to this GitHub repo
+All are safe to run more than once. (If your Supabase project is linked to this GitHub repo
 and already applied them, you will see `memories` in the Table Editor — running them again
 does no harm.)
 
@@ -144,10 +145,25 @@ The GitHub Pages URL and this code are public. The data is not.
 - **Strict Content-Security-Policy** in production: the page can only load its own files and
   talk to your Supabase project. Fonts are self-hosted; there are no analytics or third parties.
 - **No passwords in the code.** Each person has their own password, checked and stored
-  (hashed) by Supabase Auth — never in this repo or in the browser bundle.
+  (hashed) by Supabase Auth — never in this repo or in the browser bundle. Nobody, including
+  the project owner, can *see* a password. Each person changes their own under Our Details.
+- **Live chat and doodles** travel over an encrypted connection (WSS) and are filtered by the
+  same Row Level Security, so only the two members ever receive them. Messages are shown as
+  plain text — links and code in a message can never run.
+- **No backdating.** The server stamps when every message, note and stroke was written.
+- **Cannot be framed** inside another site (protects against "clickjacking").
 
-Things only you can do, from the Supabase dashboard: change who is on the guest list, remove a
-member, or delete the space.
+### Honest limits
+
+- The Supabase project owner can **reset** (not read) either password from the dashboard and
+  can read the database there. Keep your Supabase account itself safe: strong password and
+  two-factor login on supabase.com.
+- Anyone holding an unlocked phone that is signed in can open the app. Sign out on shared devices.
+- Recommended in Supabase → Authentication → Sign In / Providers → Email: set **minimum password
+  length** to 10 or more.
+
+Things only the owner can do, from the Supabase dashboard: change who is on the guest list,
+remove a member, or delete the space.
 
 ---
 

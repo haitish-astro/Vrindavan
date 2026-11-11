@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { HashRouter, Navigate, Outlet, Route, Routes } from 'react-router'
+import { HashRouter, Navigate, Route, Routes, useOutlet } from 'react-router'
 import { MotionConfig } from 'motion/react'
 import { AppProvider, useApp } from './app/AppContext'
 import { loadApi, type Api } from './data/api'
@@ -16,6 +16,12 @@ import MemoryDetail from './pages/MemoryDetail'
 import Story from './pages/Story'
 import World from './pages/World'
 import Settings from './pages/Settings'
+import Letters from './pages/Letters'
+import LetterView from './pages/LetterView'
+import LetterCompose from './pages/LetterCompose'
+import Chat from './pages/Chat'
+import Doodle from './pages/Doodle'
+import { ChatProvider } from './app/ChatContext'
 
 export default function App() {
   // undefined = starting up, null = Supabase is not configured
@@ -46,6 +52,12 @@ export default function App() {
               <Route path="story" element={<Story />} />
               <Route path="world" element={<World />} />
               <Route path="settings" element={<Settings />} />
+              <Route path="letters" element={<Letters />} />
+              <Route path="letters/new" element={<LetterCompose />} />
+              <Route path="letters/:id" element={<LetterView />} />
+              <Route path="letters/:id/edit" element={<LetterCompose />} />
+              <Route path="chat" element={<Chat />} />
+              <Route path="doodle" element={<Doodle />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
@@ -58,6 +70,8 @@ export default function App() {
 /** Everything personal lives behind this gate: signed in AND one of the two members. */
 function Gate() {
   const { user, world, worldError, reloadWorld, signOut } = useApp()
+  // Captured here so a page can finish fading out before the next one appears.
+  const outlet = useOutlet()
 
   if (user === undefined) return <Centered><Spinner label="Opening the gates…" /></Centered>
   if (user === null) return <Navigate to="/welcome" replace />
@@ -90,9 +104,9 @@ function Gate() {
   }
 
   return (
-    <Layout>
-      <Outlet />
-    </Layout>
+    <ChatProvider>
+      <Layout>{outlet}</Layout>
+    </ChatProvider>
   )
 }
 

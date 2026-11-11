@@ -13,8 +13,11 @@ function contentSecurityPolicy(supabaseUrl: string): Plugin {
     apply: 'build',
     transformIndexHtml(html) {
       let origin = ''
+      let socket = ''
       try {
-        origin = new URL(supabaseUrl).origin
+        const parsed = new URL(supabaseUrl)
+        origin = parsed.origin
+        socket = `wss://${parsed.host}` // live chat and doodles
       } catch {
         // No Supabase URL configured — the app will show its setup screen.
       }
@@ -24,7 +27,7 @@ function contentSecurityPolicy(supabaseUrl: string): Plugin {
         "style-src 'self' 'unsafe-inline'",
         `img-src 'self' blob: data: ${origin}`.trim(),
         "font-src 'self'",
-        `connect-src 'self' ${origin}`.trim(),
+        `connect-src 'self' ${origin} ${socket}`.trim(),
         "object-src 'none'",
         "base-uri 'self'",
         "form-action 'self'",
