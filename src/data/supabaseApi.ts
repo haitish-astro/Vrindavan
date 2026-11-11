@@ -35,15 +35,45 @@ function check(error: { message: string } | null, message: string): void {
   }
 }
 
-export function createSupabaseApi(url: string, anonKey: string): Api {
+/**
+ * When someone taps the link in a sign-in email, Supabase sends them back here with
+ * the session in the URL fragment (`#access_token=…`) or an error (`#error=…`).
+ * We read it and wipe it from the address bar straight away, before the router
+ * (which also uses the fragment) ever sees it.
+ */
+function takeSignInFromUrl(): { access: string; refresh: string } | { failed: true } | null {
+  const fragment = window.location.hash.replace(/^#\/?/, '')
+  if (!/(^|&)(access_token|error|error_description)=/.test(fragment)) return null
+  const params = new URLSearchParams(fragment)
+  window.history.replaceState(null, '', window.location.pathname + window.location.search)
+  const access = params.get('access_token')
+  const refresh = params.get('refresh_token')
+  return access && refresh ? { access, refresh } : { failed: true }
+}
+
+export async function createSupabaseApi(url: string, anonKey: string): Promise<Api> {
+  const arrival = takeSignInFromUrl()
   const sb = createClient(url, anonKey, {
     auth: {
-      flowType: 'pkce',
+      // The emailed link must work in whichever browser the mail app opens,
+      // so the session comes back in the link itself (handled above).
+      flowType: 'implicit',
       persistSession: true,
       autoRefreshToken: true,
-      detectSessionInUrl: true,
+      detectSessionInUrl: false,
     },
   })
+
+  let signInLinkFailed = false
+  if (arrival && 'access' in arrival) {
+    const { error } = await sb.auth.setSession({
+      access_token: arrival.access,
+      refresh_token: arrival.refresh,
+    })
+    signInLinkFailed = Boolean(error)
+  } else if (arrival) {
+    signInLinkFailed = true
+  }
 
   async function requireUserId(): Promise<string> {
     const { data } = await sb.auth.getSession()
@@ -115,6 +145,7 @@ export function createSupabaseApi(url: string, anonKey: string): Api {
 
   const api: Api = {
     mode: 'live',
+    signInLinkFailed,
 
     async getUser() {
       const { data } = await sb.auth.getSession()

@@ -68,7 +68,7 @@ Replace the template body with this, so the email carries both a code and a link
 <h2>Our Little Vrindavan</h2>
 <p>Your key to the garden:</p>
 <p style="font-size:28px;letter-spacing:6px"><strong>{{ .Token }}</strong></p>
-<p>Or <a href="{{ .ConfirmationURL }}">tap here to enter</a> (same device and browser only).</p>
+<p>Or <a href="{{ .ConfirmationURL }}">tap here to enter</a>.</p>
 <p>This key expires soon. If you did not ask for it, ignore this email.</p>
 ```
 

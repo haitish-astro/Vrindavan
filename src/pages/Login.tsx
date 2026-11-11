@@ -15,7 +15,9 @@ export default function Login() {
   const [code, setCode] = useState('')
   const [step, setStep] = useState<'email' | 'code'>('email')
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(
+    api.signInLinkFailed ? 'That sign-in link has expired or was already used. Ask for a new one below.' : null,
+  )
   const [cooldown, setCooldown] = useState(0)
 
   useEffect(() => {
@@ -77,7 +79,7 @@ export default function Login() {
             <p className="mt-1 text-sm text-ink-soft">
               {step === 'email'
                 ? 'This garden is private. Enter your email and we will send you a key.'
-                : 'If this email is on the guest list, a sign-in code is on its way.'}
+                : 'If this email is on the guest list, a sign-in email is on its way. Tap the link inside it and you are in.'}
             </p>
           </div>
 
@@ -111,7 +113,7 @@ export default function Login() {
           ) : (
             <form onSubmit={verify} noValidate>
               <Label htmlFor="code" hint={email}>
-                Sign-in code
+                Or type the code, if the email shows one
               </Label>
               <input
                 id="code"
@@ -128,7 +130,7 @@ export default function Login() {
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
               />
               <p className="mt-2 text-xs text-ink-soft">
-                Or tap the link in the email if you are opening it on this same device and browser.
+                The link works on any device. Nothing in your inbox? Check spam, or send a new one below.
               </p>
               {error && (
                 <p role="alert" className="mt-3 text-sm text-rose-deep">
@@ -155,7 +157,7 @@ export default function Login() {
                   className="font-semibold text-peacock-deep disabled:text-ink-soft/60"
                   onClick={() => void send()}
                 >
-                  {cooldown > 0 ? `Resend in ${cooldown}s` : 'Send a new code'}
+                  {cooldown > 0 ? `Resend in ${cooldown}s` : 'Send a new email'}
                 </button>
               </div>
             </form>

@@ -21,6 +21,8 @@ import type {
  */
 export interface Api {
   readonly mode: 'live' | 'preview'
+  /** True when this page was opened from a sign-in email link that had expired or been used. */
+  readonly signInLinkFailed?: boolean
 
   // ── sign-in ──
   getUser(): Promise<SessionUser | null>
