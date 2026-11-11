@@ -1,0 +1,139 @@
+import { useState, type FormEvent } from 'react'
+import { Link } from 'react-router'
+import { ArrowLeft, Check } from 'lucide-react'
+import { useApp, useWorld } from '../app/AppContext'
+import { friendlyError } from '../data/api'
+import { todayISO } from '../lib/dates'
+import { Button, Label, Page, PageHeader } from '../components/ui'
+
+/** Personalisation: names, the day we met, the greetings. */
+export default function Settings() {
+  const { api, setWorld } = useApp()
+  const world = useWorld()
+  const { space, me } = world
+
+  const [name, setName] = useState(me.display_name ?? '')
+  const [firstMet, setFirstMet] = useState(space.first_met_on ?? '')
+  const [greeting, setGreeting] = useState(space.welcome_greeting ?? '')
+  const [featured, setFeatured] = useState(space.featured_message ?? '')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [savedAt, setSavedAt] = useState(false)
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault()
+    if (firstMet && firstMet > todayISO()) {
+      setError('The day we first met cannot be in the future.')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    setSavedAt(false)
+    try {
+      const [profile, nextSpace] = await Promise.all([
+        api.updateMyName(name.trim()),
+        api.updateSettings(space.id, {
+          first_met_on: firstMet || null,
+          welcome_greeting: greeting.trim() || null,
+          featured_message: featured.trim() || null,
+        }),
+      ])
+      setWorld({
+        space: nextSpace,
+        me: profile,
+        members: world.members.map((m) => (m.id === profile.id ? profile : m)),
+      })
+      setSavedAt(true)
+    } catch (e) {
+      setError(friendlyError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Page>
+      <Link
+        to="/world"
+        className="mb-3 inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-ink-soft hover:text-peacock-deep"
+      >
+        <ArrowLeft className="size-4" aria-hidden /> Our World
+      </Link>
+      <PageHeader eyebrow="Our details" title="Make it ours" subtitle="Little touches that appear around our world." />
+
+      <form onSubmit={submit} className="paper space-y-5 p-5 sm:p-7" noValidate>
+        <div>
+          <Label htmlFor="name" hint="only you can change yours">
+            Your name or nickname
+          </Label>
+          <input
+            id="name"
+            className="field"
+            maxLength={60}
+            autoComplete="nickname"
+            placeholder="What should our world call you?"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </div>
+        <div>
+          <Label htmlFor="first-met" hint="starts the day counter">
+            The day we first met
+          </Label>
+          <input
+            id="first-met"
+            type="date"
+            className="field"
+            max={todayISO()}
+            value={firstMet}
+            onChange={(e) => setFirstMet(e.target.value)}
+          />
+        </div>
+        <div>
+          <Label htmlFor="greeting" hint="optional">
+            Welcome greeting
+          </Label>
+          <input
+            id="greeting"
+            className="field"
+            maxLength={200}
+            placeholder="Welcome back to our little world ♡"
+            value={greeting}
+            onChange={(e) => setGreeting(e.target.value)}
+          />
+          <p className="mt-1 text-xs text-ink-soft">Shown on the welcome screen and at the top of home.</p>
+        </div>
+        <div>
+          <Label htmlFor="featured" hint="optional">
+            A little note for the home page
+          </Label>
+          <textarea
+            id="featured"
+            rows={3}
+            className="field hand resize-y"
+            maxLength={600}
+            placeholder="A few words you want them to see every time they open our world."
+            value={featured}
+            onChange={(e) => setFeatured(e.target.value)}
+          />
+        </div>
+
+        {error && (
+          <p role="alert" className="text-sm text-rose-deep">
+            {error}
+          </p>
+        )}
+        <div className="flex items-center gap-3">
+          <Button type="submit" busy={busy}>
+            Save
+          </Button>
+          {savedAt && (
+            <span role="status" className="inline-flex items-center gap-1 text-sm font-semibold text-sage-deep">
+              <Check className="size-4" aria-hidden /> Saved
+            </span>
+          )}
+        </div>
+      </form>
+    </Page>
+  )
+}

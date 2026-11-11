@@ -1,0 +1,196 @@
+@import '@fontsource/cormorant-garamond/latin-400.css';
+@import '@fontsource/cormorant-garamond/latin-500.css';
+@import '@fontsource/cormorant-garamond/latin-600.css';
+@import '@fontsource/cormorant-garamond/latin-400-italic.css';
+@import '@fontsource/cormorant-garamond/latin-500-italic.css';
+@import '@fontsource/nunito-sans/latin-400.css';
+@import '@fontsource/nunito-sans/latin-600.css';
+@import '@fontsource/nunito-sans/latin-700.css';
+@import '@fontsource/caveat/latin-400.css';
+@import '@fontsource/caveat/latin-600.css';
+@import 'tailwindcss';
+
+/* ── A digital Vrindavan: the palette ─────────────────────────────────────── */
+@theme {
+  --color-ivory: #fbf6ec;
+  --color-parchment: #f5ecdc;
+  --color-paper: #fffdf8;
+  --color-blush: #f6dcdc;
+  --color-rose: #cf8493;
+  --color-rose-deep: #a85a6c;
+  --color-lavender: #ded6ec;
+  --color-plum: #7d6c9e;
+  --color-peacock: #1f6f7a;
+  --color-peacock-deep: #174f5c;
+  --color-peacock-soft: #d9ebec;
+  --color-gold: #c4a15a;
+  --color-gold-soft: #ecdcb6;
+  --color-sage: #a9b89a;
+  --color-sage-deep: #6f8463;
+  --color-ink: #33333f;
+  --color-ink-soft: #6d6a75;
+
+  --font-serif: 'Cormorant Garamond', 'Iowan Old Style', Georgia, serif;
+  --font-sans: 'Nunito Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-hand: 'Caveat', 'Segoe Script', cursive;
+
+  --shadow-soft: 0 1px 2px rgb(80 60 40 / 0.05), 0 8px 24px -12px rgb(80 60 40 / 0.18);
+  --shadow-polaroid: 0 1px 2px rgb(80 60 40 / 0.08), 0 14px 28px -14px rgb(80 60 40 / 0.35);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    font-family: var(--font-sans);
+    color: var(--color-ink);
+    background-color: var(--color-ivory);
+    /* soft watercolour washes */
+    background-image:
+      radial-gradient(60rem 36rem at 105% -10%, rgb(246 220 220 / 0.55), transparent 60%),
+      radial-gradient(48rem 32rem at -15% 20%, rgb(222 214 236 / 0.45), transparent 60%),
+      radial-gradient(50rem 30rem at 50% 115%, rgb(169 184 154 / 0.28), transparent 60%);
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-serif);
+    font-weight: 500;
+    letter-spacing: 0.005em;
+    text-wrap: balance;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-peacock);
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
+  /* iOS zooms into inputs smaller than 16px — keep them comfortable. */
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+  ::selection {
+    background: var(--color-blush);
+  }
+}
+
+@layer components {
+  .paper {
+    background-color: var(--color-paper);
+    border: 1px solid rgb(196 161 90 / 0.22);
+    border-radius: 1.25rem;
+    box-shadow: var(--shadow-soft);
+  }
+  .field {
+    width: 100%;
+    border-radius: 0.9rem;
+    border: 1px solid rgb(125 108 158 / 0.28);
+    background: rgb(255 253 248 / 0.9);
+    padding: 0.75rem 0.95rem;
+    color: var(--color-ink);
+    transition:
+      border-color 0.15s,
+      box-shadow 0.15s;
+  }
+  .field::placeholder {
+    color: rgb(109 106 117 / 0.6);
+  }
+  .field:focus {
+    outline: none;
+    border-color: var(--color-peacock);
+    box-shadow: 0 0 0 3px rgb(31 111 122 / 0.15);
+  }
+  .eyebrow {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--color-gold);
+  }
+  .hand {
+    font-family: var(--font-hand);
+    font-size: 1.35em;
+    line-height: 1.25;
+  }
+}
+
+/* ── Floating petals & golden dust ────────────────────────────────────────── */
+@keyframes petal-fall {
+  0% {
+    transform: translate3d(0, -10vh, 0) rotate(0deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: var(--petal-opacity, 0.7);
+  }
+  50% {
+    transform: translate3d(var(--petal-sway, 6vw), 50vh, 0) rotate(160deg);
+  }
+  90% {
+    opacity: var(--petal-opacity, 0.7);
+  }
+  100% {
+    transform: translate3d(calc(var(--petal-sway, 6vw) * -0.6), 112vh, 0) rotate(330deg);
+    opacity: 0;
+  }
+}
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0.1;
+    transform: scale(0.7);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1);
+  }
+}
+@keyframes feather-sway {
+  0%,
+  100% {
+    transform: rotate(-2.5deg);
+  }
+  50% {
+    transform: rotate(2.5deg);
+  }
+}
+.petal {
+  position: absolute;
+  top: 0;
+  will-change: transform;
+  animation: petal-fall linear infinite;
+}
+.sparkle {
+  position: absolute;
+  border-radius: 9999px;
+  background: var(--color-gold);
+  animation: twinkle ease-in-out infinite;
+}
+.feather-sway {
+  transform-origin: 50% 100%;
+  animation: feather-sway 7s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .petal,
+  .sparkle,
+  .feather-sway {
+    animation: none;
+  }
+  .petal {
+    display: none;
+  }
+  .sparkle {
+    opacity: 0.4;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}
