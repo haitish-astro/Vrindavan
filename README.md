@@ -52,7 +52,8 @@ select public.setup_couple_space('you@example.com');
 ### 4. Create your account (Authentication → Users → Add user → Create new user)
 
 - Email: the same one you used in step 2.
-- Password: any long random string. You will never use it; you sign in with emailed codes.
+- Password: the password you will sign in with (10+ characters). You can change it later in
+  the app under Our World → Our Details.
 - Tick **Auto Confirm User**.
 
 ### 5. Tell Supabase where the site lives (Authentication → URL Configuration)
@@ -60,7 +61,11 @@ select public.setup_couple_space('you@example.com');
 - **Site URL:** `https://haitish-astro.github.io/Vrindavan/`
 - **Redirect URLs:** add `https://haitish-astro.github.io/Vrindavan/` and `http://localhost:5173/`
 
-### 6. Put the sign-in code in the email (Authentication → Emails → Magic Link)
+### 6. Optional: the "forgot password" email (Authentication → Emails → Magic Link)
+
+Everyday sign-in is email + password. "Forgot your password?" emails a one-time link instead.
+Editing the template below needs custom SMTP (Authentication → Emails → SMTP Settings); without
+it the default email still works, with a link only.
 
 Replace the template body with this, so the email carries both a code and a link:
 
@@ -97,7 +102,8 @@ When the surprise is ready:
 select public.setup_couple_space('you@example.com', 'her@example.com');
 ```
 
-Then repeat step 4 with her email. She opens the site, enters her email, and types the code.
+Then repeat step 4 with her email and a starter password. She signs in with those and sets
+her own password under Our World → Our Details.
 A space holds exactly two people — the database refuses a third.
 
 ---
@@ -137,7 +143,8 @@ The GitHub Pages URL and this code are public. The data is not.
   `service_role` key is never used by this project — do not add it anywhere.
 - **Strict Content-Security-Policy** in production: the page can only load its own files and
   talk to your Supabase project. Fonts are self-hosted; there are no analytics or third parties.
-- **No passwords in the app.** Sign-in is a one-time emailed code.
+- **No passwords in the code.** Each person has their own password, checked and stored
+  (hashed) by Supabase Auth — never in this repo or in the browser bundle.
 
 Things only you can do, from the Supabase dashboard: change who is on the guest list, remove a
 member, or delete the space.

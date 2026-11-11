@@ -134,6 +134,89 @@ export default function Settings() {
           )}
         </div>
       </form>
+
+      <PasswordCard />
     </Page>
+  )
+}
+
+const MIN_PASSWORD = 10
+
+/** Each person chooses their own password; the other can never see or change it. */
+function PasswordCard() {
+  const { api } = useApp()
+  const [password, setPassword] = useState('')
+  const [again, setAgain] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault()
+    setSaved(false)
+    if (password.length < MIN_PASSWORD) return setError(`Use at least ${MIN_PASSWORD} characters.`)
+    if (password !== again) return setError('The two passwords do not match.')
+    setBusy(true)
+    setError(null)
+    try {
+      await api.changePassword(password)
+      setPassword('')
+      setAgain('')
+      setSaved(true)
+    } catch (e) {
+      setError(friendlyError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="paper mt-6 space-y-5 p-5 sm:p-7" noValidate>
+      <div>
+        <h2 className="text-2xl text-peacock-deep">Your password</h2>
+        <p className="mt-1 text-sm text-ink-soft">
+          Only you know it. A few unrelated words strung together are easy to remember and hard to guess.
+        </p>
+      </div>
+      <div>
+        <Label htmlFor="new-password" hint={`at least ${MIN_PASSWORD} characters`}>
+          New password
+        </Label>
+        <input
+          id="new-password"
+          type="password"
+          autoComplete="new-password"
+          className="field"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+      </div>
+      <div>
+        <Label htmlFor="new-password-again">Type it once more</Label>
+        <input
+          id="new-password-again"
+          type="password"
+          autoComplete="new-password"
+          className="field"
+          value={again}
+          onChange={(e) => setAgain(e.target.value)}
+        />
+      </div>
+      {error && (
+        <p role="alert" className="text-sm text-rose-deep">
+          {error}
+        </p>
+      )}
+      <div className="flex items-center gap-3">
+        <Button type="submit" busy={busy} variant="soft">
+          Change password
+        </Button>
+        {saved && (
+          <span role="status" className="inline-flex items-center gap-1 text-sm font-semibold text-sage-deep">
+            <Check className="size-4" aria-hidden /> Password changed
+          </span>
+        )}
+      </div>
+    </form>
   )
 }

@@ -50,6 +50,14 @@ export function createDemoApi(): Api {
       listeners.add(callback)
       return () => listeners.delete(callback)
     },
+    async signInWithPassword(email) {
+      await wait()
+      user = { id: me.id, email }
+      emit()
+    },
+    async changePassword() {
+      await wait()
+    },
     async sendCode() {
       await wait()
     },

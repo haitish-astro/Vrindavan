@@ -157,6 +157,32 @@ export async function createSupabaseApi(url: string, anonKey: string): Promise<A
       return () => data.subscription.unsubscribe()
     },
 
+    async signInWithPassword(email, password) {
+      const { error } = await sb.auth.signInWithPassword({ email, password })
+      if (!error) return
+      if (error.status === 429) {
+        throw new FriendlyError('Too many tries. Please wait a minute and try again.')
+      }
+      // One message for every failure, so nobody can learn which emails are on the guest list.
+      throw new FriendlyError('That email and password do not match. Please try again.')
+    },
+
+    async changePassword(newPassword) {
+      const { error } = await sb.auth.updateUser({ password: newPassword })
+      if (!error) return
+      if (error.code === 'weak_password') {
+        throw new FriendlyError('That password is too easy to guess. Try a longer one.')
+      }
+      if (error.code === 'same_password') {
+        throw new FriendlyError('That is already your password. Choose a different one.')
+      }
+      if (error.code === 'reauthentication_needed') {
+        throw new FriendlyError('For safety, sign out and sign back in, then change your password straight away.')
+      }
+      console.error('Could not change password', error.message)
+      throw new FriendlyError('Your password could not be changed. Please try again.')
+    },
+
     async sendCode(email) {
       const { error } = await sb.auth.signInWithOtp({
         email,

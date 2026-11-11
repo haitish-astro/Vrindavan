@@ -1,22 +1,28 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, Navigate } from 'react-router'
-import { ArrowLeft, Mail } from 'lucide-react'
+import { ArrowLeft, Eye, EyeOff, Mail } from 'lucide-react'
 import { useApp } from '../app/AppContext'
 import { friendlyError } from '../data/api'
 import { Feather, Sparkles } from '../components/Decor'
 import { Button, Label, Page } from '../components/ui'
 
 const RESEND_SECONDS = 60
+const looksLikeEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 
-/** Invite-only sign-in: an emailed one-time code (or the link in the same email). */
+/**
+ * Invite-only sign-in. Email + password is the everyday way in;
+ * an emailed one-time link is there for a forgotten password.
+ */
 export default function Login() {
   const { api, user } = useApp()
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [code, setCode] = useState('')
-  const [step, setStep] = useState<'email' | 'code'>('email')
+  const [step, setStep] = useState<'password' | 'link' | 'sent'>('password')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(
-    api.signInLinkFailed ? 'That sign-in link has expired or was already used. Ask for a new one below.' : null,
+    api.signInLinkFailed ? 'That sign-in link has expired or was already used. Sign in below, or ask for a new link.' : null,
   )
   const [cooldown, setCooldown] = useState(0)
 
@@ -28,20 +34,38 @@ export default function Login() {
 
   if (user) return <Navigate to="/" replace />
 
-  const send = async (event?: FormEvent) => {
+  const go = (next: typeof step) => {
+    setStep(next)
+    setError(null)
+  }
+
+  const signIn = async (event: FormEvent) => {
+    event.preventDefault()
+    const address = email.trim().toLowerCase()
+    if (!looksLikeEmail(address)) return setError('Please enter a valid email address.')
+    if (!password) return setError('Please enter your password.')
+    setBusy(true)
+    setError(null)
+    try {
+      await api.signInWithPassword(address, password)
+      // AppContext notices the new session and <Navigate> above takes us home.
+    } catch (e) {
+      setError(friendlyError(e))
+      setBusy(false)
+    }
+  }
+
+  const sendLink = async (event?: FormEvent) => {
     event?.preventDefault()
     const address = email.trim().toLowerCase()
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
-      setError('Please enter a valid email address.')
-      return
-    }
+    if (!looksLikeEmail(address)) return setError('Please enter a valid email address.')
     setBusy(true)
     setError(null)
     try {
       await api.sendCode(address)
       setEmail(address)
-      setStep('code')
       setCode('')
+      setStep('sent')
       setCooldown(RESEND_SECONDS)
     } catch (e) {
       setError(friendlyError(e))
@@ -53,20 +77,45 @@ export default function Login() {
   const verify = async (event: FormEvent) => {
     event.preventDefault()
     const digits = code.replace(/\D/g, '')
-    if (digits.length < 6) {
-      setError('Enter the code from the email.')
-      return
-    }
+    if (digits.length < 6) return setError('Enter the code from the email, or tap the link inside it.')
     setBusy(true)
     setError(null)
     try {
       await api.verifyCode(email, digits)
-      // AppContext notices the new session and <Navigate> above takes us home.
     } catch (e) {
       setError(friendlyError(e))
       setBusy(false)
     }
   }
+
+  const emailField = (
+    <div>
+      <Label htmlFor="email">Your email</Label>
+      <input
+        id="email"
+        type="email"
+        inputMode="email"
+        autoComplete="username"
+        autoCapitalize="none"
+        spellCheck={false}
+        required
+        className="field"
+        placeholder="you@example.com"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+      />
+    </div>
+  )
+  const errorNote = error && (
+    <p role="alert" className="text-sm text-rose-deep">
+      {error}
+    </p>
+  )
+  const subtitle = {
+    password: 'This garden is private. Only the two of us hold a key.',
+    link: 'Forgot your password? We will email you a one-time link instead.',
+    sent: 'If this email is on the guest list, a sign-in email is on its way. Tap the link inside it and you are in.',
+  }[step]
 
   return (
     <div className="relative flex min-h-dvh items-center justify-center px-5 py-10">
@@ -76,41 +125,68 @@ export default function Login() {
           <div className="mb-5 flex flex-col items-center text-center">
             <Feather className="h-20" />
             <h1 className="mt-2 text-3xl text-peacock-deep">Just the two of us</h1>
-            <p className="mt-1 text-sm text-ink-soft">
-              {step === 'email'
-                ? 'This garden is private. Enter your email and we will send you a key.'
-                : 'If this email is on the guest list, a sign-in email is on its way. Tap the link inside it and you are in.'}
-            </p>
+            <p className="mt-1 text-sm text-ink-soft">{subtitle}</p>
           </div>
 
-          {step === 'email' ? (
-            <form onSubmit={send} noValidate>
-              <Label htmlFor="email">Your email</Label>
-              <input
-                id="email"
-                type="email"
-                inputMode="email"
-                autoComplete="email"
-                autoCapitalize="none"
-                spellCheck={false}
-                required
-                autoFocus
-                className="field"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-              {error && (
-                <p role="alert" className="mt-3 text-sm text-rose-deep">
-                  {error}
-                </p>
-              )}
-              <Button type="submit" busy={busy} className="mt-5 w-full">
-                <Mail className="size-4" aria-hidden />
-                Send my key
+          {step === 'password' && (
+            <form onSubmit={signIn} noValidate className="space-y-4">
+              {emailField}
+              <div>
+                <Label htmlFor="password">Your password</Label>
+                <div className="relative">
+                  <input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    required
+                    className="field pr-12"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    aria-pressed={showPassword}
+                    className="absolute inset-y-0 right-1 flex w-11 items-center justify-center rounded-full text-ink-soft hover:text-peacock-deep"
+                  >
+                    {showPassword ? <EyeOff className="size-5" aria-hidden /> : <Eye className="size-5" aria-hidden />}
+                  </button>
+                </div>
+              </div>
+              {errorNote}
+              <Button type="submit" busy={busy} className="w-full">
+                Open the garden ♡
               </Button>
+              <p className="text-center text-sm">
+                <button type="button" className="font-semibold text-peacock-deep" onClick={() => go('link')}>
+                  Forgot your password?
+                </button>
+              </p>
             </form>
-          ) : (
+          )}
+
+          {step === 'link' && (
+            <form onSubmit={sendLink} noValidate className="space-y-4">
+              {emailField}
+              {errorNote}
+              <Button type="submit" busy={busy} className="w-full">
+                <Mail className="size-4" aria-hidden />
+                Email me a sign-in link
+              </Button>
+              <p className="text-center text-sm">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 font-semibold text-ink-soft hover:text-peacock-deep"
+                  onClick={() => go('password')}
+                >
+                  <ArrowLeft className="size-4" aria-hidden /> Back to password
+                </button>
+              </p>
+            </form>
+          )}
+
+          {step === 'sent' && (
             <form onSubmit={verify} noValidate>
               <Label htmlFor="code" hint={email}>
                 Or type the code, if the email shows one
@@ -122,40 +198,31 @@ export default function Login() {
                 autoComplete="one-time-code"
                 pattern="[0-9]*"
                 maxLength={8}
-                required
-                autoFocus
                 className="field text-center font-serif text-2xl tracking-[0.4em]"
                 placeholder="••••••"
                 value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
               />
               <p className="mt-2 text-xs text-ink-soft">
-                The link works on any device. Nothing in your inbox? Check spam, or send a new one below.
+                Once you are in, set a new password under Our World → Our Details. Nothing in your inbox? Check spam.
               </p>
-              {error && (
-                <p role="alert" className="mt-3 text-sm text-rose-deep">
-                  {error}
-                </p>
-              )}
-              <Button type="submit" busy={busy} className="mt-5 w-full">
+              <div className="mt-3">{errorNote}</div>
+              <Button type="submit" busy={busy} className="mt-4 w-full">
                 Open the garden ♡
               </Button>
               <div className="mt-4 flex items-center justify-between text-sm">
                 <button
                   type="button"
                   className="inline-flex items-center gap-1 font-semibold text-ink-soft hover:text-peacock-deep"
-                  onClick={() => {
-                    setStep('email')
-                    setError(null)
-                  }}
+                  onClick={() => go('password')}
                 >
-                  <ArrowLeft className="size-4" aria-hidden /> Different email
+                  <ArrowLeft className="size-4" aria-hidden /> Back to password
                 </button>
                 <button
                   type="button"
                   disabled={cooldown > 0 || busy}
                   className="font-semibold text-peacock-deep disabled:text-ink-soft/60"
-                  onClick={() => void send()}
+                  onClick={() => void sendLink()}
                 >
                   {cooldown > 0 ? `Resend in ${cooldown}s` : 'Send a new email'}
                 </button>

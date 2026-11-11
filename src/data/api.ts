@@ -27,6 +27,10 @@ export interface Api {
   // ── sign-in ──
   getUser(): Promise<SessionUser | null>
   onAuthChange(callback: (user: SessionUser | null) => void): () => void
+  signInWithPassword(email: string, password: string): Promise<void>
+  /** Sets a new password for the person who is signed in. */
+  changePassword(newPassword: string): Promise<void>
+  /** Fallback: email a one-time sign-in link (and code, if the template includes one). */
   sendCode(email: string): Promise<void>
   verifyCode(email: string, code: string): Promise<void>
   signOut(): Promise<void>
