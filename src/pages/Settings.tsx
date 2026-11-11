@@ -15,7 +15,6 @@ export default function Settings() {
   const [name, setName] = useState(me.display_name ?? '')
   const [firstMet, setFirstMet] = useState(space.first_met_on ?? '')
   const [greeting, setGreeting] = useState(space.welcome_greeting ?? '')
-  const [featured, setFeatured] = useState(space.featured_message ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState(false)
@@ -35,7 +34,6 @@ export default function Settings() {
         api.updateSettings(space.id, {
           first_met_on: firstMet || null,
           welcome_greeting: greeting.trim() || null,
-          featured_message: featured.trim() || null,
         }),
       ])
       setWorld({
@@ -102,20 +100,6 @@ export default function Settings() {
             onChange={(e) => setGreeting(e.target.value)}
           />
           <p className="mt-1 text-xs text-ink-soft">Shown on the welcome screen and at the top of home.</p>
-        </div>
-        <div>
-          <Label htmlFor="featured" hint="optional">
-            A little note for the home page
-          </Label>
-          <textarea
-            id="featured"
-            rows={3}
-            className="field hand resize-y"
-            maxLength={600}
-            placeholder="A few words you want them to see every time they open our world."
-            value={featured}
-            onChange={(e) => setFeatured(e.target.value)}
-          />
         </div>
 
         {error && (

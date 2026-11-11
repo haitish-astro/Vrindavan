@@ -58,6 +58,15 @@ export function savedGreeting(): SavedGreeting {
   }
 }
 
+const VISIT_KEY = `${PREFIX}last-visit`
+/** When this device last opened the app — for "while you were away". */
+export function lastVisit(): string | null {
+  return read(VISIT_KEY)
+}
+export function markVisit() {
+  write(VISIT_KEY, new Date().toISOString())
+}
+
 /** The last email used to sign in on this device, so only the password needs typing. */
 export function rememberedEmail(): string {
   return read(EMAIL_KEY) ?? ''

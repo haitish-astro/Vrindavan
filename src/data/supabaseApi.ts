@@ -42,11 +42,16 @@ function sortMemory(memory: Memory): Memory {
 }
 
 /** Throws a generic, safe message; the technical detail goes to the console only. */
-function check(error: { message: string } | null, message: string): void {
-  if (error) {
-    console.error(message, error.message)
-    throw new FriendlyError(message)
+function check(error: { message: string; code?: string } | null, message: string): void {
+  if (!error) return
+  console.error(message, error.message)
+  // The table is missing: a newer SQL file has not been run in Supabase yet.
+  if (error.code === 'PGRST205' || error.code === '42P01' || error.code === 'PGRST202') {
+    throw new FriendlyError(
+      'This part of our world is not set up yet. Run the newest SQL file in Supabase (see the README), then try again.',
+    )
   }
+  throw new FriendlyError(message)
 }
 
 /**

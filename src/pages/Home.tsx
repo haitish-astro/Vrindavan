@@ -1,6 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
+import { Send } from 'lucide-react'
+import { friendlyError } from '../data/api'
+import { HeartButton, HeartShower, useReactions } from '../components/Hearts'
+import type { QuickNote } from '../lib/types'
 import { Link } from 'react-router'
-import { motion } from 'motion/react'
+import { AnimatePresence, motion } from 'motion/react'
 import {
   CalendarDays,
   KeyRound,
@@ -19,14 +23,13 @@ import type { Letter, Memory } from '../lib/types'
 import { LotusDivider } from '../components/Decor'
 import { Envelope } from '../components/Envelope'
 import { Polaroid } from '../components/Polaroid'
-import { ButtonLink, EmptyState, ErrorNote, Page, Spinner } from '../components/ui'
+import { Button, ButtonLink, EmptyState, ErrorNote, Page, Spinner } from '../components/ui'
 
 const GREETINGS = [
   'Welcome back to our little world ♡',
   'Another beautiful day in our story.',
   'Somewhere between Radha and Krishna, we found a little world of our own.',
 ]
-const NOTE_COLORS = ['bg-[#fbe3e6]', 'bg-[#ebe5f5]', 'bg-[#f5ebcf]']
 
 /** Sections arrive one after another, gently. */
 const rise = (i: number) => ({
@@ -45,7 +48,9 @@ export default function Home() {
 
   const memories = useAsync(() => api.listMemories(space.id), [api, space.id])
   const letters = useAsync(() => api.listLetters(space.id), [api, space.id])
-  const notes = useAsync(() => api.listQuickNotes(space.id, 3), [api, space.id])
+  const notes = useAsync(() => api.listQuickNotes(space.id, 40), [api, space.id])
+  const theirNote = notes.data?.find((n) => n.author_id !== me.id)
+  const myNote = notes.data?.find((n) => n.author_id === me.id)
 
   const greeting = space.welcome_greeting?.trim() || GREETINGS[dayOfYear() % GREETINGS.length]!
   const thought = useMemo(() => messageForToday(), [])
@@ -75,6 +80,17 @@ export default function Home() {
         {me.display_name && <p className="eyebrow mb-2">Radhe Radhe, {me.display_name}</p>}
         <h1 className="mx-auto max-w-md text-[2rem] leading-tight text-peacock-deep sm:text-4xl">{greeting}</h1>
       </motion.section>
+
+      {/* their latest note to you, and a place to leave yours for them */}
+      <motion.div {...rise(step++)}>
+        <NoteExchange
+          theirNote={theirNote}
+          myNote={myNote}
+          partnerName={partnerName}
+          loading={notes.loading}
+          onSent={(note) => notes.setData((current) => [note, ...(current ?? [])])}
+        />
+      </motion.div>
 
       {/* a gentle nudge until each person has a key only they know */}
       {me.own_password === false && (
@@ -164,12 +180,6 @@ export default function Home() {
           </Link>
         </motion.section>
       )}
-      {space.featured_message?.trim() && (
-        <motion.section {...rise(step++)} className="paper relative px-6 py-6" aria-label="A few words">
-          <p className="eyebrow mb-2">A few words</p>
-          <p className="hand whitespace-pre-line text-rose-deep">{space.featured_message}</p>
-        </motion.section>
-      )}
 
       {/* latest adventure, or the invitation to make the first one */}
       {memories.loading && <Spinner label="Gathering our memories…" />}
@@ -195,34 +205,6 @@ export default function Home() {
           {latest.description && (
             <p className="mx-auto mt-4 line-clamp-3 max-w-md text-center text-ink-soft">{latest.description}</p>
           )}
-        </section>
-      )}
-
-      {/* little notes */}
-      {notes.data && notes.data.length > 0 && (
-        <section aria-label="Little notes">
-          <div className="mb-3 flex items-center justify-between">
-            <p className="eyebrow">Little notes</p>
-            <Link to="/letters?tab=notes" className="text-sm font-semibold text-peacock-deep">
-              All notes →
-            </Link>
-          </div>
-          <ul className="grid grid-cols-3 gap-3">
-            {notes.data.map((note, i) => (
-              <motion.li
-                key={note.id}
-                initial={{ opacity: 0, scale: 0.9 }}
-                whileInView={{ opacity: 1, scale: 1, rotate: [-2, 1.5, -1][i] }}
-                viewport={{ once: true }}
-                className={`flex min-h-28 flex-col rounded-sm p-3 shadow-polaroid ${NOTE_COLORS[i % NOTE_COLORS.length]}`}
-              >
-                <p className="hand line-clamp-4 flex-1 text-[1.1rem] leading-snug break-words text-ink">{note.body}</p>
-                <p className="mt-1 truncate text-[0.68rem] text-ink-soft">
-                  {nameOf(world, note.author_id)} · {timeAgo(note.created_at)}
-                </p>
-              </motion.li>
-            ))}
-          </ul>
         </section>
       )}
 
@@ -259,5 +241,133 @@ export default function Home() {
         </ButtonLink>
       </section>
     </Page>
+  )
+}
+
+/**
+ * The heart of the home page: what they last left for you, and a box to leave something for them.
+ * Notes are little notes (the same ones in Letters → Little notes), so nothing is ever lost.
+ */
+function NoteExchange({
+  theirNote,
+  myNote,
+  partnerName,
+  loading,
+  onSent,
+}: {
+  theirNote: QuickNote | undefined
+  myNote: QuickNote | undefined
+  partnerName: string
+  loading: boolean
+  onSent: (note: QuickNote) => void
+}) {
+  const { api } = useApp()
+  const world = useWorld()
+  const hearts = useReactions('quick_note', theirNote ? [theirNote.id] : [])
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [justSent, setJustSent] = useState(false)
+
+  const send = async (event?: FormEvent) => {
+    event?.preventDefault()
+    const body = text.trim()
+    if (!body) return setError('Write a few words first.')
+    setBusy(true)
+    setError(null)
+    try {
+      const note = await api.addQuickNote(world.space.id, body)
+      onSent(note)
+      setText('')
+      setJustSent(true)
+    } catch (e) {
+      setError(friendlyError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="space-y-3" aria-label={`Notes between you and ${partnerName}`}>
+      {justSent && <HeartShower onDone={() => setJustSent(false)} />}
+
+      {/* from them */}
+      <div className="relative rounded-sm bg-[#fbe3e6] px-5 pt-6 pb-3 shadow-polaroid">
+        <span className="absolute -top-2 left-1/2 h-4 w-16 -translate-x-1/2 rotate-[-3deg] bg-gold-soft/80" aria-hidden />
+        <p className="eyebrow text-rose-deep">A note from {partnerName}</p>
+        {loading ? (
+          <p className="mt-2 text-sm text-ink-soft">…</p>
+        ) : theirNote ? (
+          <>
+            <AnimatePresence mode="wait">
+              <motion.p
+                key={theirNote.id}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="hand mt-2 text-[1.6rem] leading-snug break-words whitespace-pre-line text-ink"
+              >
+                {theirNote.body}
+              </motion.p>
+            </AnimatePresence>
+            <div className="mt-1 flex items-center justify-between">
+              <p className="text-xs text-ink-soft">{timeAgo(theirNote.created_at)}</p>
+              <HeartButton
+                type="quick_note"
+                targetId={theirNote.id}
+                reactions={hearts.forTarget(theirNote.id)}
+                onChange={(next) => hearts.replace(theirNote.id, next)}
+                showCaption={false}
+              />
+            </div>
+          </>
+        ) : (
+          <p className="hand mt-2 pb-2 text-[1.3rem] text-ink-soft">
+            Nothing yet — when {partnerName} leaves you a note, it will be waiting right here.
+          </p>
+        )}
+      </div>
+
+      {/* for them */}
+      <form onSubmit={send} className="paper p-4" noValidate>
+        <label htmlFor="note-for-them" className="eyebrow mb-2 block">
+          Leave a note for {partnerName}
+        </label>
+        <div className="flex items-end gap-2">
+          <textarea
+            id="note-for-them"
+            rows={2}
+            maxLength={500}
+            className="field hand flex-1 resize-none text-[1.3rem]"
+            placeholder="Hey, I was thinking about you today ♡"
+            value={text}
+            onChange={(e) => {
+              setText(e.target.value)
+              setJustSent(false)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void send()
+            }}
+          />
+          <Button type="submit" busy={busy} aria-label={`Send note to ${partnerName}`} className="px-4">
+            <Send className="size-4" aria-hidden />
+          </Button>
+        </div>
+        {error && (
+          <p role="alert" className="mt-2 text-sm text-rose-deep">
+            {error}
+          </p>
+        )}
+        <p className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-ink-soft" role="status">
+          <span className="min-w-0 truncate">
+            {myNote
+              ? `${justSent ? 'Sent ♡ ' : ''}Your last note: “${myNote.body}” · ${timeAgo(myNote.created_at)}`
+              : `It will appear at the top of ${partnerName}’s home.`}
+          </span>
+          <Link to="/letters?tab=notes" className="shrink-0 font-semibold text-peacock-deep">
+            All notes →
+          </Link>
+        </p>
+      </form>
+    </section>
   )
 }
