@@ -10,36 +10,23 @@
 -- Everyone else is refused by Supabase Realtime itself.
 -- ---------------------------------------------------------------------------
 
-do $$
-begin
-  if to_regclass('realtime.messages') is null then
-    raise notice 'Realtime authorization is not available on this project; skipping live-channel policies.';
-    return;
-  end if;
+drop policy if exists "vrindavan live: members listen" on realtime.messages;
+create policy "vrindavan live: members listen" on realtime.messages
+  for select to authenticated
+  using (
+    realtime.messages.extension in ('broadcast', 'presence')
+    and split_part((select realtime.topic()), ':', 1) = 'space'
+    and public.is_space_member_path(split_part((select realtime.topic()), ':', 2))
+  );
 
-  execute 'drop policy if exists "vrindavan live: members listen" on realtime.messages';
-  execute $p$
-    create policy "vrindavan live: members listen" on realtime.messages
-      for select to authenticated
-      using (
-        realtime.messages.extension in ('broadcast', 'presence')
-        and split_part((select realtime.topic()), ':', 1) = 'space'
-        and public.is_space_member_path(split_part((select realtime.topic()), ':', 2))
-      )
-  $p$;
-
-  execute 'drop policy if exists "vrindavan live: members speak" on realtime.messages';
-  execute $p$
-    create policy "vrindavan live: members speak" on realtime.messages
-      for insert to authenticated
-      with check (
-        realtime.messages.extension in ('broadcast', 'presence')
-        and split_part((select realtime.topic()), ':', 1) = 'space'
-        and public.is_space_member_path(split_part((select realtime.topic()), ':', 2))
-      )
-  $p$;
-end;
-$$;
+drop policy if exists "vrindavan live: members speak" on realtime.messages;
+create policy "vrindavan live: members speak" on realtime.messages
+  for insert to authenticated
+  with check (
+    realtime.messages.extension in ('broadcast', 'presence')
+    and split_part((select realtime.topic()), ':', 1) = 'space'
+    and public.is_space_member_path(split_part((select realtime.topic()), ':', 2))
+  );
 
 -- ---------------------------------------------------------------------------
 -- Chess
@@ -53,7 +40,7 @@ create table if not exists public.chess_games (
   fen              text not null default 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
                      check (char_length(fen) <= 100),
   moves            text[] not null default '{}' check (cardinality(moves) <= 1200),
-  last_move        text check (last_move ~ '^[a-h][1-8][a-h][1-8][qrbn]?$'),
+  last_move        text check (last_move ~ '^[a-h][1-8][a-h][1-8][qrbn]?\Z'),
   status           text not null default 'active'
                      check (status in ('active', 'checkmate', 'stalemate', 'draw', 'resigned', 'abandoned')),
   winner_id        uuid references public.profiles (id) on delete set null,
@@ -156,11 +143,11 @@ begin
   if mover <> uid then
     raise exception 'It is not your turn';
   end if;
-  if san !~ '^[A-Za-z0-9+#=-]{2,10}$' or uci !~ '^[a-h][1-8][a-h][1-8][qrbn]?$' then
+  if san !~ '^[A-Za-z0-9+#=-]{2,10}\Z' or uci !~ '^[a-h][1-8][a-h][1-8][qrbn]?\Z' then
     raise exception 'Invalid move';
   end if;
   if char_length(new_fen) > 100
-     or new_fen !~ '^[pnbrqkPNBRQK1-8/]+ [wb] (-|[KQkq]+) (-|[a-h][36]) [0-9]+ [0-9]+$'
+     or new_fen !~ '^[pnbrqkPNBRQK1-8/]+ [wb] (-|[KQkq]+) (-|[a-h][36]) [0-9]+ [0-9]+\Z'
      or split_part(new_fen, ' ', 2) <> case when (expected_ply + 1) % 2 = 0 then 'w' else 'b' end then
     raise exception 'Invalid position';
   end if;
