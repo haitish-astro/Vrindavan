@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router'
 import { ArrowLeft, Send, Trash2 } from 'lucide-react'
 import { nameOf, useApp, useWorld } from '../app/AppContext'
@@ -7,7 +8,7 @@ import { useAsync } from '../lib/hooks'
 import { clearLocalDraft, loadLocalDraft, saveLocalDraft } from '../lib/local'
 import type { LetterInput } from '../lib/types'
 import { Button, ConfirmDialog, ErrorNote, Page, Spinner } from '../components/ui'
-import { LETTER_PAPER } from './LetterView'
+import { SealAndSend } from '../components/LetterMoments'
 
 const MAX = 20000
 
@@ -28,6 +29,29 @@ export default function LetterCompose() {
   const [savedNote, setSavedNote] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const ready = useRef(false)
+  const bodyRef = useRef<HTMLTextAreaElement>(null)
+  const [sparkles, setSparkles] = useState<{ id: number; x: number; glyph: string }[]>([])
+  const [sending, setSending] = useState<string | null>(null) // id of the letter flying away
+  const words = body.trim() ? body.trim().split(/s+/).length : 0
+
+  // The paper grows with the letter, so the text never scrolls away from its lines.
+  useLayoutEffect(() => {
+    const el = bodyRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [body])
+
+  const sparkle = useCallback(() => {
+    const id = Date.now() + Math.random()
+    const glyph = Math.random() < 0.3 ? '♡' : '✦'
+    setSparkles((list) => [...list.slice(-5), { id, x: 15 + Math.random() * 75, glyph }])
+    setTimeout(() => setSparkles((list) => list.filter((s) => s.id !== id)), 950)
+  }, [])
+
+  const flown = useCallback(() => {
+    if (sending) navigate(`/letters/${sending}`, { replace: true })
+  }, [navigate, sending])
 
   const partner = world.members.find((m) => m.id !== world.me.id)
   const to = partner ? nameOf(world, partner.id) : 'your love'
@@ -75,7 +99,8 @@ export default function LetterCompose() {
       const saved = await api.saveLetter(world.space.id, letter, input)
       clearLocalDraft(draftKey)
       if (status === 'sent') {
-        navigate(`/letters/${saved.id}`, { replace: true, state: { justSent: !alreadySent } })
+        if (alreadySent) navigate(`/letters/${saved.id}`, { replace: true })
+        else setSending(saved.id) // the seal-and-send moment, then on to the letter
         return
       }
       if (!id) {
@@ -112,6 +137,7 @@ export default function LetterCompose() {
 
   return (
     <Page>
+      <AnimatePresence>{sending && <SealAndSend to={to} onDone={flown} />}</AnimatePresence>
       <div className="mb-3 flex items-center justify-between">
         <Link
           to={alreadySent && id ? `/letters/${id}` : '/letters'}
@@ -139,9 +165,11 @@ export default function LetterCompose() {
         </p>
       )}
 
-      <div
-        className="relative rounded-sm border border-gold/25 bg-paper px-5 pt-6 pb-5 shadow-polaroid sm:px-9"
-        style={{ backgroundImage: LETTER_PAPER, backgroundPosition: '0 7.7rem' }}
+      <motion.div
+        className="letter-sheet writing pt-7 pr-5 pb-6 pl-12 sm:pr-9 sm:pl-16"
+        initial={{ opacity: 0, y: 24, rotate: -0.6 }}
+        animate={{ opacity: 1, y: 0, rotate: 0 }}
+        transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
       >
         <p className="eyebrow">{alreadySent ? 'Editing your letter' : 'A letter'} for {to}</p>
         <label htmlFor="letter-title" className="sr-only">
@@ -149,7 +177,7 @@ export default function LetterCompose() {
         </label>
         <input
           id="letter-title"
-          className="hand mt-2 w-full border-none bg-transparent text-[2rem] text-rose-deep placeholder:text-rose/40 focus:outline-none"
+          className="hand mt-2 w-full border-none bg-transparent text-[2rem] text-rose-deep caret-rose placeholder:text-rose/40 focus:outline-none"
           placeholder="A title, if you like"
           maxLength={120}
           value={title}
@@ -160,16 +188,39 @@ export default function LetterCompose() {
         </label>
         <textarea
           id="letter-body"
+          ref={bodyRef}
           autoFocus={!id}
-          rows={14}
+          rows={12}
           maxLength={MAX}
-          className="mt-3 block min-h-[22rem] w-full resize-y border-none bg-transparent font-serif text-[1.3rem] leading-[2.1rem] text-ink placeholder:text-ink-soft/50 focus:outline-none"
+          className="ruled mt-4 block min-h-[calc(var(--rule)*12)] w-full resize-none overflow-hidden border-none bg-transparent p-0 font-serif text-[1.3rem] text-ink caret-rose placeholder:text-ink-soft/50 focus:outline-none"
           placeholder={`My dear ${to},`}
           value={body}
           onChange={(e) => setBody(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === ' ' || e.key === 'Enter') sparkle()
+          }}
         />
-        {body.length > MAX - 1000 && <p className="text-right text-xs text-ink-soft">{MAX - body.length} characters left</p>}
-      </div>
+        <AnimatePresence>
+          {sparkles.map((sp) => (
+            <motion.span
+              key={sp.id}
+              className="pointer-events-none absolute bottom-10 text-gold"
+              style={{ left: `${sp.x}%` }}
+              initial={{ opacity: 0, y: 0, scale: 0.4 }}
+              animate={{ opacity: [0, 1, 0], y: -46, scale: 1.1, rotate: 40 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.9, ease: 'easeOut' }}
+              aria-hidden
+            >
+              {sp.glyph}
+            </motion.span>
+          ))}
+        </AnimatePresence>
+        <div className="mt-3 flex items-center justify-between text-xs text-ink-soft">
+          <span>{words > 0 ? `${words} ${words === 1 ? 'word' : 'words'} of love` : ''}</span>
+          {body.length > MAX - 1000 && <span>{MAX - body.length} characters left</span>}
+        </div>
+      </motion.div>
 
       {error && (
         <p role="alert" className="mt-3 text-sm text-rose-deep">

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link, NavLink, useLocation } from 'react-router'
-import { AnimatePresence, motion } from 'motion/react'
+import { motion } from 'motion/react'
 import { Flower2, House, Images, Mail, MessageCircleHeart, type LucideIcon } from 'lucide-react'
 import { useApp } from '../app/AppContext'
 import { useChatStatus } from '../app/ChatContext'
@@ -91,11 +91,8 @@ export function Layout({ children }: { children: ReactNode }) {
       </header>
 
       <main id="main" className={`relative z-10 mx-auto max-w-3xl px-5 pt-4 ${inChat ? 'pb-0 sm:pb-6' : 'pb-32 sm:pb-16'}`}>
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div key={pathname} exit={{ opacity: 0, y: -8, transition: { duration: 0.15 } }}>
-            {children}
-          </motion.div>
-        </AnimatePresence>
+        {/* keyed by page, so each page plays its own gentle entrance */}
+        <div key={pathname}>{children}</div>
       </main>
 
       {/* phones: a floating bar within thumb's reach (hidden in chat, where the message box lives) */}

@@ -7,6 +7,8 @@
  * production build (see loadApi in api.ts).
  */
 import type {
+  ChessGame,
+  LiveHandlers,
   ChatHandlers,
   ChatMessage,
   ChatRead,
@@ -23,7 +25,7 @@ import type {
   SessionUser,
   Space,
 } from '../lib/types'
-import type { Api } from './api'
+import { FriendlyError, type Api } from './api'
 
 const wait = (ms = 250) => new Promise((resolve) => setTimeout(resolve, ms))
 const now = () => new Date().toISOString()
@@ -35,8 +37,13 @@ const PREVIEW_REPLIES = ['♡', 'Thinking of you too', 'This is a preview reply'
 export function createDemoApi(): Api {
   let user: SessionUser | null = null
   const listeners = new Set<(user: SessionUser | null) => void>()
-  const me: Profile = { id: 'demo-me', display_name: null, own_password: false }
-  const partner: Profile = { id: 'demo-partner', display_name: null, own_password: true }
+  // Open a second window with ?as=partner to be "the other person" — the two windows
+  // talk to each other, so live features can be tried by one person at one computer.
+  const asPartner = new URLSearchParams(window.location.search).get('as') === 'partner'
+  const first: Profile = { id: 'demo-me', display_name: null, own_password: false }
+  const second: Profile = { id: 'demo-partner', display_name: null, own_password: true }
+  const me = asPartner ? second : first
+  const partner = asPartner ? first : second
   let space: Space = {
     id: 'demo-space',
     name: 'Our Little Vrindavan',
@@ -85,8 +92,86 @@ export function createDemoApi(): Api {
     chatSubs.forEach((s) => s.onRead?.(read))
   }
 
-  /** In preview, "they" read your message and send a little reply. */
+  // ── cross-window bus (preview only) ──
+  type BusMessage =
+    | { kind: 'room'; topic: string; event: string; payload: Record<string, unknown>; from: string }
+    | { kind: 'presence'; topic: string; userId: string; here: boolean }
+    | { kind: 'message'; data: ChatMessage }
+    | { kind: 'unsend'; id: string }
+    | { kind: 'read'; data: ChatRead }
+    | { kind: 'stroke'; data: DoodleStroke }
+    | { kind: 'unstroke'; id: string }
+    | { kind: 'chess'; data: ChessGame }
+  const bus = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('vrindavan-preview') : null
+  let otherWindowSeen = 0
+  const post = (message: BusMessage) => bus?.postMessage(message)
+
+  interface DemoRoom {
+    handlers: Set<LiveHandlers>
+    peers: Map<string, number>
+    heartbeat?: ReturnType<typeof setInterval>
+  }
+  const demoRooms = new Map<string, DemoRoom>()
+  const announce = (topic: string) => {
+    const room = demoRooms.get(topic)
+    if (!room) return
+    const cutoff = Date.now() - 4500
+    room.peers.forEach((seen, id) => {
+      if (seen < cutoff) room.peers.delete(id)
+    })
+    const ids = [me.id, ...room.peers.keys()]
+    room.handlers.forEach((h) => h.onPresence?.(ids))
+  }
+
+  let chessGame: ChessGame | null = null
+  const chessSubs = new Set<(game: ChessGame) => void>()
+
+  bus?.addEventListener('message', (event: MessageEvent<BusMessage>) => {
+    const m = event.data
+    otherWindowSeen = Date.now()
+    if (m.kind === 'room') {
+      demoRooms.get(m.topic)?.handlers.forEach((h) => h.onEvent?.(m.event, m.payload, m.from))
+    } else if (m.kind === 'presence') {
+      const room = demoRooms.get(m.topic)
+      if (!room) return
+      if (m.here) {
+        const isNew = !room.peers.has(m.userId)
+        room.peers.set(m.userId, Date.now())
+        if (isNew) post({ kind: 'presence', topic: m.topic, userId: me.id, here: true })
+      } else room.peers.delete(m.userId)
+      announce(m.topic)
+    } else if (m.kind === 'message') {
+      if (!messages.some((x) => x.id === m.data.id)) messages.push(m.data)
+      chatSubs.forEach((sub) => sub.onMessage?.(m.data))
+    } else if (m.kind === 'unsend') {
+      messages = messages.filter((x) => x.id !== m.id)
+      chatSubs.forEach((sub) => sub.onDelete?.(m.id))
+    } else if (m.kind === 'read') {
+      const i = reads.findIndex((r) => r.user_id === m.data.user_id)
+      if (i >= 0) reads[i] = m.data
+      else reads.push(m.data)
+      chatSubs.forEach((sub) => sub.onRead?.(m.data))
+    } else if (m.kind === 'stroke') {
+      if (!strokes.some((x) => x.id === m.data.id)) strokes.push(m.data)
+      doodleSubs.forEach((sub) => sub.onStroke?.(m.data))
+    } else if (m.kind === 'unstroke') {
+      strokes = strokes.filter((x) => x.id !== m.id)
+      doodleSubs.forEach((sub) => sub.onDelete?.(m.id))
+    } else if (m.kind === 'chess') {
+      chessGame = m.data
+      chessSubs.forEach((fn) => fn(m.data))
+    }
+  })
+
+  const saveChess = (game: ChessGame) => {
+    chessGame = game
+    chessSubs.forEach((fn) => fn(game))
+    post({ kind: 'chess', data: game })
+  }
+
+  /** In preview (single window), "they" read your message and send a little reply. */
   const partnerResponds = () => {
+    if (Date.now() - otherWindowSeen < 8000) return // a real second window is answering instead
     setTimeout(() => setRead(partner.id), 900)
     setTimeout(() => {
       const reply: ChatMessage = {
@@ -356,6 +441,7 @@ export function createDemoApi(): Api {
       const message: ChatMessage = { id: crypto.randomUUID(), space_id: spaceId, sender_id: me.id, body, created_at: now() }
       messages.push(message)
       chatSubs.forEach((s) => s.onMessage?.(message))
+      post({ kind: 'message', data: message })
       partnerResponds()
       return message
     },
@@ -363,12 +449,14 @@ export function createDemoApi(): Api {
       await wait()
       messages = messages.filter((m) => m.id !== id)
       chatSubs.forEach((s) => s.onDelete?.(id))
+      post({ kind: 'unsend', id })
     },
     async listChatReads() {
       return reads.map((r) => ({ ...r }))
     },
     async markChatRead() {
       setRead(me.id)
+      post({ kind: 'read', data: reads.find((r) => r.user_id === me.id)! })
     },
     async countUnread(_spaceId, since) {
       return messages.filter((m) => m.sender_id !== me.id && (!since || m.created_at > since)).length
@@ -388,22 +476,135 @@ export function createDemoApi(): Api {
       const stroke: DoodleStroke = { ...input, id: crypto.randomUUID(), space_id: spaceId, author_id: me.id, created_at: now() }
       strokes.push(stroke)
       doodleSubs.forEach((s) => s.onStroke?.(stroke))
+      post({ kind: 'stroke', data: stroke })
       return stroke
     },
     async deleteStroke(id) {
       await wait(80)
       strokes = strokes.filter((s) => s.id !== id)
       doodleSubs.forEach((s) => s.onDelete?.(id))
+      post({ kind: 'unstroke', id })
     },
     async clearBoard() {
       await wait()
       const ids = strokes.map((s) => s.id)
       strokes = []
-      ids.forEach((id) => doodleSubs.forEach((s) => s.onDelete?.(id)))
+      ids.forEach((id) => {
+        doodleSubs.forEach((s) => s.onDelete?.(id))
+        post({ kind: 'unstroke', id })
+      })
     },
     subscribeDoodles(_spaceId, handlers) {
       doodleSubs.add(handlers)
       return () => doodleSubs.delete(handlers)
+    },
+
+    // ── live presence (between preview windows) ──
+    joinRoom(spaceId, roomName, _userId, handlers) {
+      const topic = `space:${spaceId}:${roomName}`
+      let room = demoRooms.get(topic)
+      if (!room) {
+        const created: DemoRoom = { handlers: new Set(), peers: new Map() }
+        created.heartbeat = setInterval(() => {
+          post({ kind: 'presence', topic, userId: me.id, here: true })
+          announce(topic)
+        }, 1500)
+        demoRooms.set(topic, created)
+        post({ kind: 'presence', topic, userId: me.id, here: true })
+        room = created
+      }
+      const r = room
+      r.handlers.add(handlers)
+      handlers.onStatus?.('live')
+      announce(topic)
+      let left = false
+      return {
+        send(event, payload) {
+          if (!left) post({ kind: 'room', topic, event, payload: { ...payload, from: me.id }, from: me.id })
+        },
+        leave() {
+          if (left) return
+          left = true
+          r.handlers.delete(handlers)
+          if (r.handlers.size === 0) {
+            clearInterval(r.heartbeat)
+            demoRooms.delete(topic)
+            post({ kind: 'presence', topic, userId: me.id, here: false })
+          }
+        },
+      }
+    },
+
+    // ── chess ──
+    async latestChessGame() {
+      await wait(150)
+      return chessGame ? { ...chessGame, moves: [...chessGame.moves] } : null
+    },
+    async newChessGame(playAs) {
+      await wait()
+      const meWhite = playAs === 'white' ? true : playAs === 'black' ? false : Math.random() < 0.5
+      saveChess({
+        id: crypto.randomUUID(),
+        space_id: space.id,
+        white_id: meWhite ? me.id : partner.id,
+        black_id: meWhite ? partner.id : me.id,
+        fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        moves: [],
+        last_move: null,
+        status: 'active',
+        winner_id: null,
+        draw_offered_by: null,
+        created_at: now(),
+        updated_at: now(),
+      })
+    },
+    async chessMove(gameId, move) {
+      await wait(120)
+      const game = chessGame
+      if (!game || game.id !== gameId) throw new FriendlyError('Game not found.')
+      if (game.status !== 'active') throw new FriendlyError('This game is already over.')
+      if (game.moves.length !== move.expectedPly) throw new FriendlyError('The board changed — here is the latest position.')
+      const mover = move.expectedPly % 2 === 0 ? game.white_id : game.black_id
+      if (mover !== me.id) throw new FriendlyError('It is not your turn yet.')
+      saveChess({
+        ...game,
+        fen: move.fen,
+        moves: [...game.moves, move.san],
+        last_move: move.uci,
+        status: move.status,
+        winner_id: move.status === 'checkmate' ? me.id : null,
+        draw_offered_by: null,
+        updated_at: now(),
+      })
+    },
+    async chessResign(gameId) {
+      await wait()
+      const game = chessGame
+      if (!game || game.id !== gameId) return
+      saveChess({
+        ...game,
+        status: 'resigned',
+        winner_id: game.white_id === me.id ? game.black_id : game.white_id,
+        draw_offered_by: null,
+        updated_at: now(),
+      })
+    },
+    async chessDraw(gameId) {
+      await wait()
+      const game = chessGame
+      if (!game || game.id !== gameId) return 'offered'
+      if (game.draw_offered_by && game.draw_offered_by !== me.id) {
+        saveChess({ ...game, status: 'draw', draw_offered_by: null, updated_at: now() })
+        return 'agreed'
+      }
+      saveChess({ ...game, draw_offered_by: me.id, updated_at: now() })
+      return 'offered'
+    },
+    subscribeChess(_spaceId, onGame) {
+      chessSubs.add(onGame)
+      return () => {
+        chessSubs.delete(onGame)
+      }
     },
 
     async photoUrl(path) {

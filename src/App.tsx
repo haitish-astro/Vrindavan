@@ -22,6 +22,8 @@ import LetterCompose from './pages/LetterCompose'
 import Chat from './pages/Chat'
 import Doodle from './pages/Doodle'
 import { ChatProvider } from './app/ChatContext'
+import { CursorGlow } from './components/CursorGlow'
+import Chess from './pages/Chess'
 
 export default function App() {
   // undefined = starting up, null = Supabase is not configured
@@ -38,6 +40,7 @@ export default function App() {
 
   return (
     <MotionConfig reducedMotion="user">
+      <CursorGlow />
       <AppProvider api={api}>
         <HashRouter>
           <Routes>
@@ -58,6 +61,7 @@ export default function App() {
               <Route path="letters/:id/edit" element={<LetterCompose />} />
               <Route path="chat" element={<Chat />} />
               <Route path="doodle" element={<Doodle />} />
+              <Route path="chess" element={<Chess />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

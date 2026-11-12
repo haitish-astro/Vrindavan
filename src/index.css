@@ -194,3 +194,99 @@
     scroll-behavior: auto;
   }
 }
+
+/* ── Letter paper ──────────────────────────────────────────────────────────── */
+/* Ruled lines that always sit exactly under each line of text. */
+.ruled {
+  --rule: 2.25rem;
+  line-height: var(--rule);
+  /* Kept deliberately simple (no background-size/clip/attachment): some browsers
+     skip painting fancier combinations on a <textarea>. Needs no vertical padding. */
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(var(--rule) - 0.5rem),
+    rgb(196 161 90 / 0.45) calc(var(--rule) - 0.5rem),
+    rgb(196 161 90 / 0.45) calc(var(--rule) - 0.5rem + 1px),
+    transparent calc(var(--rule) - 0.5rem + 1px),
+    transparent var(--rule)
+  );
+}
+.letter-sheet {
+  position: relative;
+  background-color: var(--color-paper);
+  background-image:
+    radial-gradient(120% 80% at 0% 0%, rgb(246 220 220 / 0.35), transparent 55%),
+    radial-gradient(90% 70% at 100% 100%, rgb(222 214 236 / 0.3), transparent 60%);
+  border: 1px solid rgb(196 161 90 / 0.28);
+  border-radius: 4px;
+  box-shadow:
+    0 1px 1px rgb(80 60 40 / 0.06),
+    0 18px 40px -18px rgb(80 60 40 / 0.4),
+    inset 0 0 60px rgb(196 161 90 / 0.08);
+}
+.letter-sheet::before {
+  /* the red margin line */
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2.25rem;
+  width: 1px;
+  background: rgb(207 132 147 / 0.35);
+  pointer-events: none;
+}
+@media (min-width: 640px) {
+  .letter-sheet::before {
+    left: 3.25rem;
+  }
+}
+.letter-sheet.writing:focus-within {
+  box-shadow:
+    0 1px 1px rgb(80 60 40 / 0.06),
+    0 18px 40px -18px rgb(80 60 40 / 0.4),
+    0 0 0 4px rgb(246 220 220 / 0.7),
+    0 0 50px rgb(207 132 147 / 0.25);
+}
+
+/* ── Glowing cursor ────────────────────────────────────────────────────────── */
+@keyframes trail-fade {
+  from {
+    opacity: 0.9;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) translateY(10px) scale(0.2);
+  }
+}
+.cursor-trail {
+  position: fixed;
+  z-index: 70;
+  pointer-events: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: radial-gradient(circle, #ecdcb6, #c4a15a);
+  animation: trail-fade 0.7s ease-out forwards;
+}
+@keyframes glow-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.12);
+  }
+}
+.glow-pulse {
+  animation: glow-pulse 2.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cursor-trail,
+  .glow-pulse {
+    animation: none;
+  }
+}

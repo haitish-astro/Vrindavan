@@ -1,5 +1,7 @@
-import { createClient, type Session } from '@supabase/supabase-js'
+import { createClient, type RealtimeChannel, type Session } from '@supabase/supabase-js'
 import type {
+  ChessGame,
+  LiveHandlers,
   ChatMessage,
   ChatRead,
   DoodleStroke,
@@ -160,6 +162,53 @@ export async function createSupabaseApi(url: string, anonKey: string): Promise<A
         waiters.forEach((w) => w.reject(new Error('Photo unavailable')))
       }
     }
+  }
+
+  // ── live rooms: one private channel per room, shared by every screen that needs it ──
+  interface RoomEntry {
+    channel: RealtimeChannel
+    handlers: Set<LiveHandlers>
+    refs: number
+    peers: string[]
+    status: 'connecting' | 'live' | 'offline'
+    closeTimer?: ReturnType<typeof setTimeout>
+  }
+  const rooms = new Map<string, RoomEntry>()
+
+  function openRoom(topic: string, userId: string): RoomEntry {
+    const channel = sb.channel(topic, {
+      config: { private: true, broadcast: { self: false, ack: false }, presence: { key: userId } },
+    })
+    const entry: RoomEntry = { channel, handlers: new Set(), refs: 0, peers: [], status: 'connecting' }
+    const setStatus = (status: RoomEntry['status']) => {
+      entry.status = status
+      entry.handlers.forEach((h) => h.onStatus?.(status))
+    }
+    channel.on('broadcast', { event: '*' }, (message) => {
+      const payload = (message.payload ?? {}) as Record<string, unknown>
+      const from = typeof payload.from === 'string' ? payload.from : ''
+      if (!from || from === userId) return
+      entry.handlers.forEach((h) => h.onEvent?.(message.event, payload, from))
+    })
+    channel.on('presence', { event: 'sync' }, () => {
+      entry.peers = Object.keys(channel.presenceState())
+      entry.handlers.forEach((h) => h.onPresence?.(entry.peers))
+    })
+    // Private channels need the signed-in token before joining.
+    void sb.realtime
+      .setAuth()
+      .catch(() => {})
+      .finally(() => {
+        channel.subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            setStatus('live')
+            void channel.track({ online_at: new Date().toISOString() })
+          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+            setStatus('offline')
+          }
+        })
+      })
+    return entry
   }
 
   const api: Api = {
@@ -683,6 +732,109 @@ export async function createSupabaseApi(url: string, anonKey: string): Promise<A
           const id = (payload.old as { id?: string }).id
           if (id) handlers.onDelete?.(id)
         })
+        .subscribe()
+      return () => {
+        void sb.removeChannel(channel)
+      }
+    },
+
+    // ── live presence ──
+    joinRoom(spaceId, room, userId, handlers) {
+      const topic = `space:${spaceId}:${room}`
+      let entry = rooms.get(topic)
+      if (entry?.closeTimer) {
+        clearTimeout(entry.closeTimer)
+        entry.closeTimer = undefined
+      }
+      if (!entry) {
+        entry = openRoom(topic, userId)
+        rooms.set(topic, entry)
+      }
+      const room$ = entry
+      room$.handlers.add(handlers)
+      room$.refs++
+      handlers.onStatus?.(room$.status)
+      if (room$.peers.length) handlers.onPresence?.(room$.peers)
+      let left = false
+      return {
+        send(event, payload) {
+          if (left) return
+          void room$.channel.send({ type: 'broadcast', event, payload: { ...payload, from: userId } })
+        },
+        leave() {
+          if (left) return
+          left = true
+          room$.handlers.delete(handlers)
+          room$.refs--
+          if (room$.refs <= 0) {
+            // A short grace period, so moving between screens does not drop the connection.
+            room$.closeTimer = setTimeout(() => {
+              rooms.delete(topic)
+              void sb.removeChannel(room$.channel)
+            }, 1500)
+          }
+        },
+      }
+    },
+
+    // ── chess ──
+    async latestChessGame(spaceId) {
+      const { data, error } = await sb
+        .from('chess_games')
+        .select('*')
+        .eq('space_id', spaceId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      check(error, 'We could not load the chess board.')
+      return (data as ChessGame | null) ?? null
+    },
+
+    async newChessGame(playAs) {
+      const { error } = await sb.rpc('chess_new_game', { play_as: playAs })
+      if (error?.message.includes('not joined')) {
+        throw new FriendlyError('Your love has not joined yet — chess needs two.')
+      }
+      check(error, 'A new game could not be started.')
+    },
+
+    async chessMove(gameId, move) {
+      const { error } = await sb.rpc('chess_move', {
+        game_id: gameId,
+        expected_ply: move.expectedPly,
+        san: move.san,
+        uci: move.uci,
+        new_fen: move.fen,
+        new_status: move.status,
+      })
+      if (!error) return
+      if (error.message.startsWith('stale')) throw new FriendlyError('The board changed — here is the latest position.')
+      if (error.message.includes('not your turn')) throw new FriendlyError('It is not your turn yet.')
+      if (error.message.includes('already over')) throw new FriendlyError('This game is already over.')
+      check(error, 'That move could not be saved.')
+    },
+
+    async chessResign(gameId) {
+      const { error } = await sb.rpc('chess_resign', { game_id: gameId })
+      check(error, 'Could not resign this game.')
+    },
+
+    async chessDraw(gameId) {
+      const { data, error } = await sb.rpc('chess_draw', { game_id: gameId })
+      check(error, 'Could not offer a draw.')
+      return data === 'agreed' ? 'agreed' : 'offered'
+    },
+
+    subscribeChess(spaceId, onGame) {
+      const channel = sb
+        .channel(`chess-db:${spaceId}:${crypto.randomUUID()}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'chess_games', filter: `space_id=eq.${spaceId}` },
+          (payload) => {
+            if (payload.new && 'id' in payload.new) onGame(payload.new as ChessGame)
+          },
+        )
         .subscribe()
       return () => {
         void sb.removeChannel(channel)

@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
-import { motion } from 'motion/react'
+import { AnimatePresence, motion } from 'motion/react'
 import { ArrowLeft, Lock, RotateCcw, Send } from 'lucide-react'
 import { nameOf, useApp, useWorld } from '../app/AppContext'
 import { useChatStatus } from '../app/ChatContext'
@@ -8,6 +8,8 @@ import { friendlyError } from '../data/api'
 import { dayLabel, formatTime, localDay } from '../lib/dates'
 import type { ChatMessage, ChatRead } from '../lib/types'
 import { Feather } from '../components/Decor'
+import { PresencePill } from '../components/Presence'
+import { useLiveRoom } from '../lib/live'
 import { ConfirmDialog, ErrorNote, Spinner } from '../components/ui'
 
 type Shown = ChatMessage & { pending?: 'sending' | 'failed'; localKey?: string }
@@ -46,7 +48,31 @@ export default function Chat() {
   const [unsending, setUnsending] = useState<Shown | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
+  const [partnerTyping, setPartnerTyping] = useState(false)
+  const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastTypingSent = useRef(0)
   const seen = useRef<Set<string>>(new Set()) // messages that should not animate in
+
+  // Live: are they here, and are they writing?
+  const { send: sendLive, partnerHere, status: liveStatus } = useLiveRoom('chat', (event, payload) => {
+    if (event !== 'typing') return
+    if (typingTimer.current) clearTimeout(typingTimer.current)
+    if (payload.on === true) {
+      setPartnerTyping(true)
+      typingTimer.current = setTimeout(() => setPartnerTyping(false), 4000)
+    } else {
+      setPartnerTyping(false)
+    }
+  })
+  useEffect(() => {
+    if (!partnerHere) setPartnerTyping(false)
+  }, [partnerHere])
+  const announceTyping = (on: boolean) => {
+    const now = Date.now()
+    if (on && now - lastTypingSent.current < 1500) return
+    lastTypingSent.current = on ? now : 0
+    sendLive('typing', { on })
+  }
   const bottom = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
   const firstScroll = useRef(false)
@@ -90,6 +116,7 @@ export default function Chat() {
           return [...current, message]
         })
         if (message.sender_id !== me) {
+          setPartnerTyping(false)
           markRead()
           if (atBottom) scrollDown()
         }
@@ -144,6 +171,7 @@ export default function Chat() {
     const body = text.trim()
     if (!body) return
     const localKey = `local-${crypto.randomUUID()}`
+    announceTyping(false)
     setText('')
     if (input.current) input.current.style.height = ''
     setMessages((current) => [
@@ -215,6 +243,7 @@ export default function Chat() {
           <p className="flex items-center gap-1 text-xs text-ink-soft">
             <Lock className="size-3" aria-hidden /> Only the two of you can read this
           </p>
+          {partner && <PresencePill name={partnerName} here={partnerHere} status={liveStatus} className="mt-1" />}
         </div>
       </header>
 
@@ -317,6 +346,30 @@ export default function Chat() {
               )
             })}
           </ol>
+          <AnimatePresence>
+            {partnerTyping && (
+              <motion.div
+                key="typing"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 4 }}
+                className="mt-2 flex items-center gap-2"
+                aria-live="polite"
+              >
+                <span className="flex items-center gap-1 rounded-3xl rounded-bl-md border border-gold/20 bg-paper px-4 py-3 shadow-soft">
+                  {[0, 1, 2].map((i) => (
+                    <motion.span
+                      key={i}
+                      className="size-2 rounded-full bg-rose"
+                      animate={{ y: [0, -4, 0], opacity: [0.5, 1, 0.5] }}
+                      transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.15 }}
+                    />
+                  ))}
+                </span>
+                <span className="text-xs text-ink-soft">{partnerName} is writing…</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
           <div ref={bottom} className="h-2" />
         </div>
       )}
@@ -347,7 +400,9 @@ export default function Chat() {
             onChange={(e) => {
               setText(e.target.value)
               grow(e.target)
+              announceTyping(e.target.value.trim().length > 0)
             }}
+            onBlur={() => announceTyping(false)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault()

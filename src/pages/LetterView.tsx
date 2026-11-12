@@ -8,12 +8,9 @@ import { useAsync } from '../lib/hooks'
 import { formatLong, localDay, timeAgo } from '../lib/dates'
 import type { LetterReply } from '../lib/types'
 import { LotusDivider } from '../components/Decor'
-import { EnvelopeOpening } from '../components/Envelope'
+import { LetterOpening } from '../components/LetterMoments'
 import { HeartButton, HeartShower, useReactions } from '../components/Hearts'
 import { Button, ButtonLink, ConfirmDialog, EmptyState, ErrorNote, Spinner } from '../components/ui'
-
-export const LETTER_PAPER =
-  'repeating-linear-gradient(transparent 0 2.1rem, rgb(196 161 90 / 0.16) 2.1rem calc(2.1rem + 1px))'
 
 /** Opening a letter: the envelope animation, then the letter itself on paper. */
 export default function LetterView() {
@@ -52,7 +49,10 @@ export default function LetterView() {
     void api.markLetterOpened(letter)
   }, [phase, letter, mine, openedByMe, api])
 
-  const reveal = useCallback(() => setPhase('reading'), [])
+  const reveal = useCallback(() => {
+    setPhase('reading')
+    setShower(true)
+  }, [])
 
   if (loading && !letter) return <Spinner label="Fetching the envelope…" />
   if (error) return <ErrorNote message={error} onRetry={reload} />
@@ -66,6 +66,9 @@ export default function LetterView() {
   if (letter.status === 'draft') return <Navigate to={`/letters/${letter.id}/edit`} replace />
 
   const author = nameOf(world, letter.author_id)
+  const partner = world.members.find((m) => m.id !== world.me.id)
+  const partnerName = partner ? nameOf(world, partner.id) : 'your love'
+  const lines = letter.body.split(/\r?\n/)
   const partnerOpen = letter.opens.find((o) => o.user_id !== world.me.id)
 
   const remove = async () => {
@@ -83,18 +86,16 @@ export default function LetterView() {
   return (
     <>
       {shower && <HeartShower onDone={() => setShower(false)} />}
+      <AnimatePresence>
+        {phase === 'envelope' && <LetterOpening from={author} title={letter.title} onDone={reveal} />}
+      </AnimatePresence>
       <AnimatePresence mode="wait">
-        {phase === 'envelope' && (
-          <motion.div key="envelope" exit={{ opacity: 0, y: 30, scale: 0.96 }} transition={{ duration: 0.35 }}>
-            <EnvelopeOpening from={author} onDone={reveal} />
-          </motion.div>
-        )}
         {phase === 'reading' && (
           <motion.div
             key="reading"
-            initial={{ opacity: 0, y: 28, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.4 }}
           >
             <div className="mb-3 flex items-center justify-between">
               <Link
@@ -130,23 +131,56 @@ export default function LetterView() {
               </p>
             )}
 
-            <article
-              className="relative overflow-hidden rounded-sm border border-gold/25 bg-paper px-6 pt-8 pb-7 shadow-polaroid sm:px-10"
-              style={{ backgroundImage: LETTER_PAPER, backgroundPosition: '0 5.2rem' }}
+            <motion.article
+              className="letter-sheet overflow-hidden pt-8 pr-5 pb-8 pl-12 sm:pr-10 sm:pl-16"
+              initial={{ opacity: 0, y: 40, rotateX: 10, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, rotateX: 0, scale: 1 }}
+              transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+              style={{ transformPerspective: 1200 }}
             >
-              <span className="pointer-events-none absolute inset-y-0 left-8 w-px bg-rose/25 sm:left-12" aria-hidden />
-              <p className="eyebrow text-center">
-                {mine ? 'Your letter' : `A letter from ${author}`} · {formatLong(localDay(letter.sent_at ?? letter.created_at))}
+              <motion.div
+                initial={{ opacity: 0, scale: 0.6 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.3, type: 'spring', stiffness: 200, damping: 14 }}
+              >
+                <LotusDivider />
+              </motion.div>
+              <p className="eyebrow mt-3 text-center">
+                {mine ? `Your letter to ${partnerName}` : `A letter from ${author}`} ·{' '}
+                {formatLong(localDay(letter.sent_at ?? letter.created_at))}
               </p>
               {letter.title && (
-                <h1 className="hand mt-3 text-center text-[2.4rem] leading-tight text-rose-deep">{letter.title}</h1>
+                <motion.h1
+                  className="hand mt-3 text-center text-[2.4rem] leading-tight text-rose-deep"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.45, duration: 0.7 }}
+                >
+                  {letter.title}
+                </motion.h1>
               )}
-              <LotusDivider className="mt-3 mb-5" />
-              <div className="font-serif text-[1.3rem] leading-[2.1rem] break-words whitespace-pre-line text-ink">
-                {letter.body}
+              <div className="ruled mt-6 font-serif text-[1.3rem] break-words text-ink">
+                {lines.map((line, i) => (
+                  <motion.p
+                    key={i}
+                    className="min-h-[var(--rule)] whitespace-pre-wrap"
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.6 + Math.min(i, 30) * 0.08, duration: 0.7 }}
+                  >
+                    {line || '\u00a0'}
+                  </motion.p>
+                ))}
               </div>
-              <p className="hand mt-8 text-right text-[1.6rem] text-rose-deep">— {author} ♡</p>
-            </article>
+              <motion.p
+                className="hand mt-6 text-right text-[1.7rem] text-rose-deep"
+                initial={{ clipPath: 'inset(0 100% 0 0)' }}
+                animate={{ clipPath: 'inset(0 0% 0 0)' }}
+                transition={{ delay: 0.9 + Math.min(lines.length, 30) * 0.08, duration: 1.2, ease: 'easeInOut' }}
+              >
+                With love, {author} ♡
+              </motion.p>
+            </motion.article>
 
             <div className="mt-4 flex flex-wrap items-center justify-between gap-2 px-1">
               <HeartButton

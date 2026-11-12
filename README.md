@@ -15,6 +15,7 @@ private storage) behind it, hosted as a static site on GitHub Pages.
 | 1. Foundation | Done | Theme, welcome experience, invite-only sign-in, private data access, navigation, settings |
 | 2. Core memories | Done | Add Memory, multi-photo upload, gallery, memory pages, notes from both, timeline |
 | 3. Communication | Done | Love letters with envelope opening, little notes, hearts, replies, live private chat, shared doodle board |
+| Extras | Done | Live cursors and strokes on the doodle board, typing and presence in chat, live chess |
 | 4. Shared experiences | Next | Special dates, countdowns, bucket list |
 | 5. Romantic polish | Later | Surprises, On This Day, hidden details |
 
@@ -31,6 +32,7 @@ Run the files in `supabase/migrations/` **in order** — paste each into a new q
 1. `20261111000100_foundation.sql`
 2. `20261111000200_memories.sql`
 3. `20261112000300_letters_chat.sql` (letters, notes, hearts, chat, doodle board)
+4. `20261112000400_live_and_chess.sql` (live cursors, typing, "here now", chess)
 
 All are safe to run more than once. (If your Supabase project is linked to this GitHub repo
 and already applied them, you will see `memories` in the Table Editor — running them again
@@ -120,7 +122,9 @@ npm run preview              # serve the production build
 ```
 
 If `.env.local` has no key, `npm run dev` starts in **preview mode**: an in-memory copy of the
-app where any email and code work and nothing is saved. That code is stripped from production
+app where any email and code work and nothing is saved. Open a second window at
+`http://localhost:5173/?as=partner` to be "the other person": the two windows talk to each
+other, so live cursors, typing, chat and chess can be tried at one computer. That code is stripped from production
 builds — a deployed site without keys just shows an "Almost ready" page.
 
 ---
@@ -150,6 +154,11 @@ The GitHub Pages URL and this code are public. The data is not.
 - **Live chat and doodles** travel over an encrypted connection (WSS) and are filtered by the
   same Row Level Security, so only the two members ever receive them. Messages are shown as
   plain text — links and code in a message can never run.
+- **Private live channels.** Cursors, live strokes, typing and "here now" use Supabase Realtime
+  channels marked private; a policy on `realtime.messages` lets only the two members of the
+  space join or speak on them.
+- **Chess moves are checked by the server** for whose turn it is and for move order, so two
+  quick moves can never scramble a game.
 - **No backdating.** The server stamps when every message, note and stroke was written.
 - **Cannot be framed** inside another site (protects against "clickjacking").
 

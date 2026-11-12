@@ -1,5 +1,10 @@
 import type { PreparedImage } from '../lib/images'
 import type {
+  ChessGame,
+  ChessMoveInput,
+  LiveHandlers,
+  LiveRoom,
+  LiveRoomName,
   ChatHandlers,
   ChatMessage,
   ChatRead,
@@ -119,6 +124,18 @@ export interface Api {
   deleteStroke(id: string): Promise<void>
   clearBoard(): Promise<void>
   subscribeDoodles(spaceId: string, handlers: DoodleHandlers): () => void
+
+  // ── live presence: private, members-only channels ──
+  joinRoom(spaceId: string, room: LiveRoomName, userId: string, handlers: LiveHandlers): LiveRoom
+
+  // ── chess ──
+  latestChessGame(spaceId: string): Promise<ChessGame | null>
+  newChessGame(playAs: 'white' | 'black' | 'random'): Promise<void>
+  chessMove(gameId: string, move: ChessMoveInput): Promise<void>
+  chessResign(gameId: string): Promise<void>
+  /** Offer a draw, or accept the other person's offer. */
+  chessDraw(gameId: string): Promise<'offered' | 'agreed'>
+  subscribeChess(spaceId: string, onGame: (game: ChessGame) => void): () => void
 
   // ── private photos ──
   /** A short-lived link to a private photo. */

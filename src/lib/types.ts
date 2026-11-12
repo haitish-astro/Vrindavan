@@ -181,4 +181,47 @@ export interface DoodleHandlers {
   onDelete?: (id: string) => void
 }
 
+// ── live presence ──
+export type LiveRoomName = 'doodle' | 'chat' | 'chess'
+
+export interface LiveHandlers {
+  /** something the other person broadcast (cursor, typing, live stroke…) */
+  onEvent?: (event: string, payload: Record<string, unknown>, from: string) => void
+  /** who is in the room right now (user ids, including you) */
+  onPresence?: (userIds: string[]) => void
+  /** connection state, for a gentle "reconnecting…" */
+  onStatus?: (status: 'connecting' | 'live' | 'offline') => void
+}
+
+export interface LiveRoom {
+  send: (event: string, payload: Record<string, unknown>) => void
+  leave: () => void
+}
+
+// ── chess ──
+export type ChessStatus = 'active' | 'checkmate' | 'stalemate' | 'draw' | 'resigned' | 'abandoned'
+
+export interface ChessGame {
+  id: string
+  space_id: string
+  white_id: string
+  black_id: string
+  fen: string
+  moves: string[]
+  last_move: string | null
+  status: ChessStatus
+  winner_id: string | null
+  draw_offered_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ChessMoveInput {
+  expectedPly: number
+  san: string
+  uci: string
+  fen: string
+  status: 'active' | 'checkmate' | 'stalemate' | 'draw'
+}
+
 export type SpaceSettings = Pick<Space, 'first_met_on' | 'welcome_greeting' | 'featured_message'>
