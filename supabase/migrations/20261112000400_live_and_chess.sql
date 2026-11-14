@@ -148,7 +148,8 @@ begin
   end if;
   if char_length(new_fen) > 100
      or new_fen !~ '^[pnbrqkPNBRQK1-8/]+ [wb] (-|[KQkq]+) (-|[a-h][36]) [0-9]+ [0-9]+\Z'
-     or split_part(new_fen, ' ', 2) <> case when (expected_ply + 1) % 2 = 0 then 'w' else 'b' end then
+     -- (brackets matter: an IF condition must not contain a bare CASE ... THEN)
+     or split_part(new_fen, ' ', 2) <> (case when (expected_ply + 1) % 2 = 0 then 'w' else 'b' end) then
     raise exception 'Invalid position';
   end if;
   if new_status not in ('active', 'checkmate', 'stalemate', 'draw') then
