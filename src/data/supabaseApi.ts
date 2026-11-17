@@ -54,7 +54,7 @@ function check(error: { message: string; code?: string } | null, message: string
   if (!error) return
   console.error(message, error.message)
   // The table is missing: a newer SQL file has not been run in Supabase yet.
-  if (error.code === 'PGRST205' || error.code === '42P01' || error.code === 'PGRST202') {
+  if (error.code === 'PGRST205' || error.code === '42P01' || error.code === 'PGRST202' || error.code === 'PGRST204') {
     throw new FriendlyError(
       'This part of our world is not set up yet. Run the newest SQL file in Supabase (see the README), then try again.',
     )

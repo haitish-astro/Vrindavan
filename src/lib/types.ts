@@ -295,9 +295,14 @@ export interface ScheduleBlock {
   /** may be smaller than start_minute: the block runs past midnight */
   end_minute: number
   tz: string
+  /** a one-off on this date only; null/absent = repeats every week */
+  on_date?: string | null
   created_at: string
 }
 
-export type ScheduleBlockInput = Pick<ScheduleBlock, 'label' | 'weekday' | 'start_minute' | 'end_minute' | 'tz'>
+export type ScheduleBlockInput = Pick<ScheduleBlock, 'label' | 'weekday' | 'start_minute' | 'end_minute' | 'tz'> & {
+  /** set for a one-off: only this date (YYYY-MM-DD, in the owner's time zone); null or absent = every week */
+  on_date?: string | null
+}
 
 export type SpaceSettings = Pick<Space, 'first_met_on' | 'welcome_greeting' | 'featured_message'>

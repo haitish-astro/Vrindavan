@@ -90,7 +90,10 @@ export function WeekSchedule() {
             style={{ top: (s.from / 60) * HOUR_PX, height: Math.max(14, ((s.to - s.from) / 60) * HOUR_PX), transformOrigin: 'top' }}
             aria-label={`${mine ? 'You' : partnerName}: ${s.block.label}, ${minutesToLabel(s.from)} to ${minutesToLabel(s.to)}`}
           >
-            <span className="block truncate font-semibold">{s.block.label}</span>
+            <span className="block truncate font-semibold">
+              {s.block.label}
+              {!s.block.on_date && <span className="ml-1 font-normal opacity-60" title="Every week">↻</span>}
+            </span>
             {!short && (
               <span className="block truncate opacity-80">
                 {minutesToLabel(s.from)}–{minutesToLabel(s.to)}
@@ -226,6 +229,7 @@ export function WeekSchedule() {
         key={editing === 'new' ? `new-${day}` : (editing?.id ?? 'closed')}
         target={editing}
         defaultWeekday={parseISO(day).getDay()}
+        defaultDate={day}
         tz={tz}
         onClose={() => setEditing(null)}
         onSaved={(saved, replacedId) => {
@@ -252,6 +256,7 @@ export function WeekSchedule() {
 function BlockForm({
   target,
   defaultWeekday,
+  defaultDate,
   tz,
   onClose,
   onSaved,
@@ -259,6 +264,7 @@ function BlockForm({
 }: {
   target: ScheduleBlock | 'new' | null
   defaultWeekday: number
+  defaultDate: string
   tz: string
   onClose: () => void
   onSaved: (blocks: ScheduleBlock[], replacedId?: string) => void
@@ -269,6 +275,9 @@ function BlockForm({
   const existing = target && target !== 'new' ? target : undefined
   const [label, setLabel] = useState(existing?.label ?? 'Work')
   const [days, setDays] = useState<number[]>(existing ? [existing.weekday] : [defaultWeekday])
+  // Schedules change, so a new entry is just for one day unless you choose "Every week".
+  const [repeat, setRepeat] = useState<'once' | 'weekly'>(existing ? (existing.on_date ? 'once' : 'weekly') : 'once')
+  const [date, setDate] = useState(existing?.on_date ?? defaultDate)
   const [start, setStart] = useState(existing ? toHHMM(existing.start_minute) : '09:00')
   const [end, setEnd] = useState(existing ? toHHMM(existing.end_minute % 1440) : '17:00')
   const [busy, setBusy] = useState(false)
@@ -282,7 +291,8 @@ function BlockForm({
     const s = fromHHMM(start)
     let e = fromHHMM(end)
     if (!label.trim()) return setError('Give it a name, like “Work”.')
-    if (days.length === 0) return setError('Choose at least one day.')
+    if (repeat === 'weekly' && days.length === 0) return setError('Choose at least one day.')
+    if (repeat === 'once' && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return setError('Choose the date.')
     if (s === null || e === null) return setError('Choose a start and end time.')
     if (e === 0) e = 1440
     if (s === e) return setError('Start and end can’t be the same.')
@@ -290,8 +300,12 @@ function BlockForm({
     setBusy(true)
     setError(null)
     try {
-      if (existing) {
-        const input: ScheduleBlockInput = { ...base, weekday: days[0]! }
+      if (repeat === 'once') {
+        const input: ScheduleBlockInput = { ...base, weekday: parseISO(date).getDay(), on_date: date }
+        if (existing) onSaved([await api.updateBlock(existing.id, input)], existing.id)
+        else onSaved(await api.addBlocks(world.space.id, [input]))
+      } else if (existing) {
+        const input: ScheduleBlockInput = { ...base, weekday: days[0]!, ...(existing.on_date ? { on_date: null } : {}) }
         onSaved([await api.updateBlock(existing.id, input)], existing.id)
       } else {
         onSaved(await api.addBlocks(world.space.id, days.map((weekday) => ({ ...base, weekday }))))
@@ -325,6 +339,36 @@ function BlockForm({
             ))}
           </div>
         </div>
+        <div>
+          <p className="mb-1.5 text-sm font-semibold">How often?</p>
+          <div role="radiogroup" aria-label="How often" className="flex gap-1 rounded-full bg-parchment p-1">
+            {(
+              [
+                ['once', 'Just this day'],
+                ['weekly', 'Every week'],
+              ] as const
+            ).map(([value, text]) => (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={repeat === value}
+                onClick={() => setRepeat(value)}
+                className={`flex-1 rounded-full py-2.5 text-sm font-semibold transition ${
+                  repeat === value ? 'bg-peacock text-white shadow-soft' : 'text-ink-soft hover:text-peacock-deep'
+                }`}
+              >
+                {text}
+              </button>
+            ))}
+          </div>
+        </div>
+        {repeat === 'once' ? (
+          <div>
+            <Label htmlFor="blk-date">Date</Label>
+            <input id="blk-date" type="date" className="field" value={date} onChange={(ev) => setDate(ev.target.value)} />
+          </div>
+        ) : (
         <fieldset>
           <legend className="mb-1.5 text-sm font-semibold">{existing ? 'Day' : 'Which days?'}</legend>
           <div className="flex gap-1.5">
@@ -350,6 +394,7 @@ function BlockForm({
             </div>
           )}
         </fieldset>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label htmlFor="blk-start">From</Label>
@@ -361,7 +406,10 @@ function BlockForm({
           </div>
         </div>
         <p className="text-xs text-ink-soft">
-          In your time ({tzLabel(tz)}).{overnight ? ' This runs past midnight into the next morning.' : ''} It repeats every week.
+          In your time ({tzLabel(tz)}).{overnight ? ' This runs past midnight into the next morning.' : ''}{' '}
+          {repeat === 'once'
+            ? `Only on ${parseISO(date).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}.`
+            : 'It repeats every week.'}
         </p>
         {error && (
           <p role="alert" className="text-sm text-rose-deep">

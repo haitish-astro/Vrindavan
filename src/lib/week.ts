@@ -77,10 +77,14 @@ export function segmentsForDay(blocks: ScheduleBlock[], day: string, viewerTz: s
     // The owner's calendar day can be a day either side of ours.
     for (const shift of [-1, 0, 1]) {
       const date = new Date(Date.UTC(y, m - 1, d + shift))
-      if (date.getUTCDay() !== block.weekday) continue
       const cy = date.getUTCFullYear()
       const cm = date.getUTCMonth() + 1
       const cd = date.getUTCDate()
+      if (block.on_date) {
+        // a one-off: only on its own date
+        const iso = `${cy}-${String(cm).padStart(2, '0')}-${String(cd).padStart(2, '0')}`
+        if (iso !== block.on_date) continue
+      } else if (date.getUTCDay() !== block.weekday) continue
       const endMinute = block.end_minute > block.start_minute ? block.end_minute : block.end_minute + 1440
       const start = zonedToUtc(cy, cm, cd, block.start_minute, block.tz)
       const end = zonedToUtc(cy, cm, cd, endMinute, block.tz)
