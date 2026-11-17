@@ -1,5 +1,9 @@
-import type { PreparedImage } from '../lib/images'
+import type { PreparedImage, PreparedMedia } from '../lib/images'
 import type {
+  CalendarEvent,
+  CalendarEventInput,
+  ScheduleBlock,
+  ScheduleBlockInput,
   ChessGame,
   ChessMoveInput,
   LiveHandlers,
@@ -61,12 +65,13 @@ export interface Api {
   // ── memories ──
   listMemories(spaceId: string): Promise<Memory[]>
   getMemory(id: string): Promise<Memory | null>
-  createMemory(spaceId: string, input: MemoryInput): Promise<Memory>
+  createMemory(spaceId: string, input: MemoryInput, kind?: 'adventure' | 'call'): Promise<Memory>
   updateMemory(id: string, input: MemoryInput): Promise<void>
   deleteMemory(memory: Memory): Promise<void>
+  /** Adds a photo or a video to a memory. */
   addPhoto(
     memory: Pick<Memory, 'id' | 'space_id'>,
-    image: PreparedImage,
+    media: PreparedMedia,
     sortOrder: number,
     onProgress: (fraction: number) => void,
   ): Promise<Photo>
@@ -136,6 +141,18 @@ export interface Api {
   /** Offer a draw, or accept the other person's offer. */
   chessDraw(gameId: string): Promise<'offered' | 'agreed'>
   subscribeChess(spaceId: string, onGame: (game: ChessGame) => void): () => void
+
+  // ── calendar ──
+  listEvents(spaceId: string): Promise<CalendarEvent[]>
+  saveEvent(spaceId: string, existing: CalendarEvent | undefined, input: CalendarEventInput): Promise<CalendarEvent>
+  deleteEvent(id: string): Promise<void>
+
+  // ── our week ──
+  listBlocks(spaceId: string): Promise<ScheduleBlock[]>
+  /** Adds the same block on several weekdays at once. */
+  addBlocks(spaceId: string, inputs: ScheduleBlockInput[]): Promise<ScheduleBlock[]>
+  updateBlock(id: string, input: ScheduleBlockInput): Promise<ScheduleBlock>
+  deleteBlock(id: string): Promise<void>
 
   // ── private photos ──
   /** A short-lived link to a private photo. */

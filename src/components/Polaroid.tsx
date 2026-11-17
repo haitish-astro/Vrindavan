@@ -6,8 +6,10 @@ import { formatShort } from '../lib/dates'
 import { PrivatePhoto } from './ui'
 
 export function coverPath(memory: Memory, size: 'thumb' | 'full' = 'thumb'): string | null {
-  const first = memory.photos[0]
+  // Prefer a photo for the cover; a video lends its still frame if that is all there is.
+  const first = memory.photos.find((p) => p.kind !== 'video') ?? memory.photos[0]
   if (!first) return null
+  if (first.kind === 'video') return first.thumb_path
   return size === 'thumb' ? (first.thumb_path ?? first.storage_path) : first.storage_path
 }
 

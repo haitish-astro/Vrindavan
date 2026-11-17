@@ -228,7 +228,7 @@ function TimelineItem({
       <p className="mb-1.5 text-sm font-semibold text-ink-soft">
         {formatLong(entry.date)}
         <span className={`ml-2 text-xs font-bold tracking-wider uppercase ${isMemory ? 'text-peacock' : 'text-gold'}`}>
-          {isMemory ? 'Adventure' : 'Milestone'}
+          {isMemory ? (entry.memory.kind === 'call' ? 'FaceTime' : 'Adventure') : 'Milestone'}
         </span>
       </p>
 
@@ -381,7 +381,7 @@ function MilestoneForm({
               </button>
             </div>
           )}
-          <PhotoPicker photos={photos} onChange={setPhotos} multiple={false} label="Add a photograph" />
+          <PhotoPicker photos={photos} onChange={setPhotos} multiple={false} label="Add a photograph" accept="image/*" />
         </div>
         {error && (
           <p role="alert" className="text-sm text-rose-deep">

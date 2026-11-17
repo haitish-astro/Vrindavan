@@ -35,6 +35,9 @@ export interface Photo {
   width: number | null
   height: number | null
   sort_order: number
+  /** 'photo' or 'video' (older rows have no value and are photos) */
+  kind?: 'photo' | 'video'
+  duration_seconds?: number | null
   created_at: string
 }
 
@@ -56,6 +59,9 @@ export interface Memory {
   location: string | null
   description: string | null
   emoji: string | null
+  /** 'adventure' (default) or a FaceTime 'call' */
+  kind?: 'adventure' | 'call'
+  call_minutes?: number | null
   created_at: string
   photos: Photo[]
   notes: MemoryNote[]
@@ -67,6 +73,7 @@ export interface MemoryInput {
   location: string | null
   description: string | null
   emoji: string | null
+  call_minutes?: number | null
 }
 
 export interface NoteInput {
@@ -223,5 +230,39 @@ export interface ChessMoveInput {
   fen: string
   status: 'active' | 'checkmate' | 'stalemate' | 'draw'
 }
+
+// ── calendar ──
+export interface CalendarEvent {
+  id: string
+  space_id: string
+  created_by: string
+  title: string
+  event_date: string
+  /** 'HH:MM' or 'HH:MM:SS', or null for all day */
+  event_time: string | null
+  note: string | null
+  yearly: boolean
+  symbol: string | null
+  created_at: string
+}
+
+export type CalendarEventInput = Pick<CalendarEvent, 'title' | 'event_date' | 'event_time' | 'note' | 'yearly' | 'symbol'>
+
+// ── our week ──
+export interface ScheduleBlock {
+  id: string
+  space_id: string
+  user_id: string
+  label: string
+  /** 0 = Sunday … 6 = Saturday, in the owner's time zone */
+  weekday: number
+  start_minute: number
+  /** may be smaller than start_minute: the block runs past midnight */
+  end_minute: number
+  tz: string
+  created_at: string
+}
+
+export type ScheduleBlockInput = Pick<ScheduleBlock, 'label' | 'weekday' | 'start_minute' | 'end_minute' | 'tz'>
 
 export type SpaceSettings = Pick<Space, 'first_met_on' | 'welcome_greeting' | 'featured_message'>

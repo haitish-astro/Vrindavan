@@ -26,6 +26,9 @@ interface AppState {
 
 const AppContext = createContext<AppState | null>(null)
 
+/** How long the app may sit in the background before it asks for the password again. */
+const AUTO_LOCK_MS = 10 * 60 * 1000
+
 export function AppProvider({ api, children }: { api: Api; children: ReactNode }) {
   const [user, setUser] = useState<SessionUser | null | undefined>(undefined)
   const [world, setWorldState] = useState<World | null | undefined>(undefined)
@@ -84,6 +87,26 @@ export function AppProvider({ api, children }: { api: Api; children: ReactNode }
     await api.signOut()
     setUser(null)
   }, [api])
+
+  // Auto-lock: if the app sits in the background for a while (a phone left on a
+  // table, a laptop walked away from), ask for the password again.
+  const signedIn = Boolean(userId)
+  useEffect(() => {
+    if (!signedIn) return
+    let hiddenAt: number | null = null
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = Date.now()
+      } else if (hiddenAt !== null && Date.now() - hiddenAt > AUTO_LOCK_MS) {
+        hiddenAt = null
+        void api.signOut().then(() => setUser(null))
+      } else {
+        hiddenAt = null
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [api, signedIn])
 
   const value = useMemo<AppState>(
     () => ({ api, user, world, worldError, setWorld, reloadWorld, signOut }),

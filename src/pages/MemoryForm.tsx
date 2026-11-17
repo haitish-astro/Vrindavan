@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link, Navigate, useNavigate, useParams } from 'react-router'
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router'
 import { ArrowLeft, ChevronDown } from 'lucide-react'
 import { useApp, useWorld } from '../app/AppContext'
 import { friendlyError } from '../data/api'
@@ -25,12 +25,16 @@ export default function MemoryForm() {
   const navigate = useNavigate()
 
   const existing = useAsync(() => (id ? api.getMemory(id) : Promise.resolve(null)), [api, id])
+  const [params] = useSearchParams()
+  const isCall = editing ? existing.data?.kind === 'call' : params.get('kind') === 'call'
+  const listPath = isCall ? '/memories?tab=calls' : '/memories'
 
   const [title, setTitle] = useState('')
   const [date, setDate] = useState(todayISO())
   const [location, setLocation] = useState('')
   const [description, setDescription] = useState('')
   const [emoji, setEmoji] = useState<string | null>(null)
+  const [minutes, setMinutes] = useState('')
   const [note, setNote] = useState('')
   const [favorite, setFavorite] = useState('')
   const [photos, setPhotos] = useState<PickedPhoto[]>([])
@@ -48,18 +52,23 @@ export default function MemoryForm() {
     setLocation(memory.location ?? '')
     setDescription(memory.description ?? '')
     setEmoji(memory.emoji)
+    setMinutes(memory.call_minutes ? String(memory.call_minutes) : '')
   }, [existing.data])
 
   if (editing) {
     if (existing.loading) return <Spinner />
     if (existing.error) return <ErrorNote message={existing.error} onRetry={existing.reload} />
-    if (!existing.data) return <Navigate to="/memories" replace />
+    if (!existing.data) return <Navigate to={listPath} replace />
     if (existing.data.created_by !== world.me.id) return <Navigate to={`/memories/${id}`} replace />
   }
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
-    if (!title.trim()) return setError('Give this memory a title.')
+    if (!title.trim()) return setError(isCall ? 'Give this call a little title.' : 'Give this memory a title.')
+    const callMinutes = minutes.trim() ? Math.round(Number(minutes)) : null
+    if (callMinutes !== null && (!Number.isFinite(callMinutes) || callMinutes < 0 || callMinutes > 1440)) {
+      return setError('Call length should be in minutes, up to 1440.')
+    }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return setError('Choose the date of this memory.')
 
     const input: MemoryInput = {
@@ -68,6 +77,7 @@ export default function MemoryForm() {
       location: clean(location),
       description: clean(description),
       emoji,
+      ...(isCall ? { call_minutes: callMinutes } : {}),
     }
     setBusy(true)
     setError(null)
@@ -77,11 +87,13 @@ export default function MemoryForm() {
         navigate(`/memories/${id}`, { replace: true })
         return
       }
-      const memory = await api.createMemory(world.space.id, input)
+      const memory = await api.createMemory(world.space.id, input, isCall ? 'call' : 'adventure')
       let failed = 0
+      let failReason: string | undefined
       if (photos.length > 0) {
         const result = await uploadPhotos(api, memory, photos.map((p) => p.file), 0, setUpload)
         failed = result.failed
+        failReason = result.reason
       }
       let noteFailed = false
       if (note.trim() || favorite.trim()) {
@@ -91,7 +103,7 @@ export default function MemoryForm() {
           noteFailed = true
         }
       }
-      navigate(`/memories/${memory.id}`, { replace: true, state: { failedPhotos: failed, noteFailed } })
+      navigate(`/memories/${memory.id}`, { replace: true, state: { failedPhotos: failed, failReason, noteFailed } })
     } catch (e) {
       setError(friendlyError(e))
       setBusy(false)
@@ -102,24 +114,30 @@ export default function MemoryForm() {
   return (
     <Page>
       <Link
-        to={editing ? `/memories/${id}` : '/memories'}
+        to={editing ? `/memories/${id}` : listPath}
         className="mb-3 inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-ink-soft hover:text-peacock-deep"
       >
         <ArrowLeft className="size-4" aria-hidden /> Back
       </Link>
       <PageHeader
-        eyebrow={editing ? 'Edit' : 'A new page'}
-        title={editing ? 'Edit this memory' : 'Add a Memory'}
-        subtitle={editing ? undefined : 'A title, a date, a few photos. That is all it takes.'}
+        eyebrow={editing ? 'Edit' : isCall ? 'FaceTime' : 'A new page'}
+        title={editing ? (isCall ? 'Edit this call' : 'Edit this memory') : isCall ? 'Save a FaceTime' : 'Add a Memory'}
+        subtitle={
+          editing
+            ? undefined
+            : isCall
+              ? 'A title, the day, a few screenshots. Even miles apart, it counts.'
+              : 'A title, a date, a few photos or videos. That is all it takes.'
+        }
       />
 
       <form onSubmit={submit} className="paper space-y-5 p-5 sm:p-7" noValidate>
         <div>
-          <Label htmlFor="title">What shall we call it?</Label>
+          <Label htmlFor="title">{isCall ? 'What was this call?' : 'What shall we call it?'}</Label>
           <input
             id="title"
             className="field"
-            placeholder="Chai by the river"
+            placeholder={isCall ? 'Falling asleep on FaceTime again' : 'Chai by the river'}
             maxLength={120}
             required
             autoFocus={!editing}
@@ -129,7 +147,7 @@ export default function MemoryForm() {
         </div>
 
         <div>
-          <Label htmlFor="date">When was it?</Label>
+          <Label htmlFor="date">{isCall ? 'Which day?' : 'When was it?'}</Label>
           <input
             id="date"
             type="date"
@@ -141,12 +159,31 @@ export default function MemoryForm() {
           />
         </div>
 
+        {isCall && (
+          <div>
+            <Label htmlFor="minutes" hint="optional">
+              How long did you talk? (minutes)
+            </Label>
+            <input
+              id="minutes"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={1440}
+              className="field"
+              placeholder="e.g. 95"
+              value={minutes}
+              onChange={(e) => setMinutes(e.target.value)}
+            />
+          </div>
+        )}
+
         {!editing && (
           <div>
-            <p className="mb-1.5 text-sm font-semibold">Photos</p>
-            <PhotoPicker photos={photos} onChange={setPhotos} />
+            <p className="mb-1.5 text-sm font-semibold">{isCall ? 'Screenshots & recordings' : 'Photos & videos'}</p>
+            <PhotoPicker photos={photos} onChange={setPhotos} label={isCall ? 'Add screenshots or recordings' : 'Add photos or videos'} />
             <p className="mt-1.5 text-xs text-ink-soft">
-              Photos are made lighter before uploading, and stay private to the two of us.
+              Photos are made lighter before uploading; videos up to 50 MB each. Everything stays private to the two of you.
             </p>
           </div>
         )}
@@ -160,7 +197,7 @@ export default function MemoryForm() {
               id="note"
               rows={3}
               className="field hand resize-y"
-              placeholder="What do you want to remember about this?"
+              placeholder={isCall ? 'What did you talk about? What made you laugh?' : 'What do you want to remember about this?'}
               maxLength={4000}
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -182,12 +219,12 @@ export default function MemoryForm() {
           <div className="space-y-5">
             <div>
               <Label htmlFor="location" hint="optional">
-                Where?
+                {isCall ? 'Where were you each?' : 'Where?'}
               </Label>
               <input
                 id="location"
                 className="field"
-                placeholder="A little café, a city, a rooftop…"
+                placeholder={isCall ? 'Me in Mumbai, you in Boston…' : 'A little café, a city, a rooftop…'}
                 maxLength={120}
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
@@ -195,7 +232,7 @@ export default function MemoryForm() {
             </div>
             <div>
               <Label htmlFor="description" hint="optional">
-                The story of the day
+                {isCall ? 'The story of the call' : 'The story of the day'}
               </Label>
               <textarea
                 id="description"

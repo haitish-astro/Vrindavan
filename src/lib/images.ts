@@ -79,3 +79,97 @@ export async function prepareImage(file: File): Promise<PreparedImage> {
     if ('close' in source) source.close()
   }
 }
+
+// ── videos ──────────────────────────────────────────────────────────────────
+
+export interface PreparedVideo {
+  video: Blob
+  type: string
+  ext: 'mp4' | 'mov' | 'webm'
+  /** a still frame used as the cover, or null if this browser can't read the video */
+  poster: Blob | null
+  width: number | null
+  height: number | null
+  duration: number | null
+}
+
+export type PreparedMedia = PreparedImage | PreparedVideo
+
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024
+const VIDEO_TYPES: Record<string, PreparedVideo['ext']> = {
+  'video/mp4': 'mp4',
+  'video/quicktime': 'mov',
+  'video/webm': 'webm',
+}
+
+function videoType(file: File): string {
+  if (file.type in VIDEO_TYPES) return file.type
+  const name = file.name.toLowerCase()
+  if (name.endsWith('.mov')) return 'video/quicktime'
+  if (name.endsWith('.mp4') || name.endsWith('.m4v')) return 'video/mp4'
+  if (name.endsWith('.webm')) return 'video/webm'
+  return file.type
+}
+
+export function isVideoFile(file: File): boolean {
+  return file.type.startsWith('video/') || /\.(mov|mp4|m4v|webm)$/i.test(file.name)
+}
+
+/** Grab a frame for the cover and read the size and length. Gives up quietly after a few seconds. */
+function readVideo(file: File): Promise<{ poster: Blob | null; width: number | null; height: number | null; duration: number | null }> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file)
+    const video = document.createElement('video')
+    let finished = false
+    const done = (result: { poster: Blob | null; width: number | null; height: number | null; duration: number | null }) => {
+      if (finished) return
+      finished = true
+      clearTimeout(timer)
+      URL.revokeObjectURL(url)
+      video.removeAttribute('src')
+      video.load()
+      resolve(result)
+    }
+    const timer = setTimeout(() => done({ poster: null, width: null, height: null, duration: null }), 8000)
+    video.muted = true
+    video.playsInline = true
+    video.preload = 'metadata'
+    video.onloadedmetadata = () => {
+      const duration = Number.isFinite(video.duration) ? video.duration : null
+      video.currentTime = Math.min(0.5, (duration ?? 1) / 2)
+    }
+    video.onseeked = () => {
+      const width = video.videoWidth || null
+      const height = video.videoHeight || null
+      const duration = Number.isFinite(video.duration) ? video.duration : null
+      try {
+        const scale = Math.min(1, 640 / Math.max(width ?? 640, height ?? 640))
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.max(1, Math.round((width ?? 640) * scale))
+        canvas.height = Math.max(1, Math.round((height ?? 640) * scale))
+        canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height)
+        canvas.toBlob((blob) => done({ poster: blob, width, height, duration }), 'image/jpeg', 0.78)
+      } catch {
+        done({ poster: null, width, height, duration })
+      }
+    }
+    video.onerror = () => done({ poster: null, width: null, height: null, duration: null })
+    video.src = url
+  })
+}
+
+export async function prepareVideo(file: File): Promise<PreparedVideo> {
+  const type = videoType(file)
+  const ext = VIDEO_TYPES[type]
+  if (!ext) throw new ImageError(`"${file.name}" is a video format we can't keep. Try MP4 or MOV.`)
+  if (file.size > MAX_VIDEO_BYTES) {
+    throw new ImageError(`"${file.name}" is over 50 MB. Try a shorter clip — about a minute or less.`)
+  }
+  const details = await readVideo(file)
+  return { video: file, type, ext, ...details }
+}
+
+/** A photo or a video, ready to upload. */
+export function prepareMedia(file: File): Promise<PreparedMedia> {
+  return isVideoFile(file) ? prepareVideo(file) : prepareImage(file)
+}

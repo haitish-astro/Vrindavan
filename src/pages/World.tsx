@@ -2,7 +2,9 @@ import { useState } from 'react'
 import { Link } from 'react-router'
 import { motion } from 'motion/react'
 import {
+  CalendarHeart,
   ChevronRight,
+  Video,
   Crown,
   LogOut,
   Palette,
@@ -16,6 +18,8 @@ import { Feather } from '../components/Decor'
 import { Button, ConfirmDialog, Page, PageHeader } from '../components/ui'
 
 const PLACES: { to: string; title: string; text: string; icon: LucideIcon }[] = [
+  { to: '/calendar', title: 'Calendar', text: 'Special dates, countdowns, and both of your weeks.', icon: CalendarHeart },
+  { to: '/memories?tab=calls', title: 'FaceTime', text: 'The calls that kept us close.', icon: Video },
   { to: '/story', title: 'Our Story', text: 'The timeline of us, milestone by milestone.', icon: ScrollText },
   { to: '/doodle', title: 'Doodle Board', text: 'A shared sheet of paper — draw together, live.', icon: Palette },
   { to: '/chess', title: 'Chess', text: 'A game for two — every move live on both screens.', icon: Crown },
@@ -71,7 +75,7 @@ export default function World() {
       </ul>
 
       <p className="mt-6 px-2 text-center text-sm text-ink-soft italic">
-        Still being prepared: special dates and our future adventures.
+        Still being prepared: our future adventures (bucket list).
       </p>
 
       <div className="mt-8 flex flex-col items-center gap-2">

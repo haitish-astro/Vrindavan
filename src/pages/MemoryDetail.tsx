@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { AnimatePresence, motion } from 'motion/react'
+import { Video } from 'lucide-react'
+import { formatMinutes } from '../lib/dates'
 import { ArrowLeft, Camera, ChevronLeft, ChevronRight, MapPin, Pencil, Trash2, X } from 'lucide-react'
 import { nameOf, useApp, useWorld } from '../app/AppContext'
 import { friendlyError } from '../data/api'
@@ -10,6 +12,7 @@ import { uploadPhotos, type UploadStatus } from '../lib/uploads'
 import type { Memory, MemoryNote, Photo } from '../lib/types'
 import { LotusDivider } from '../components/Decor'
 import { UploadProgress } from '../components/PhotoPicker'
+import { MediaThumb, PrivateVideo, isVideo } from '../components/Media'
 import { HeartButton, useReactions } from '../components/Hearts'
 import {
   Button,
@@ -30,7 +33,7 @@ export default function MemoryDetail() {
   const world = useWorld()
   const navigate = useNavigate()
   const location = useLocation()
-  const arrival = location.state as { failedPhotos?: number; noteFailed?: boolean } | null
+  const arrival = location.state as { failedPhotos?: number; failReason?: string; noteFailed?: boolean } | null
 
   const { data: memory, loading, error, reload, setData } = useAsync(() => api.getMemory(id), [api, id])
   const hearts = useReactions('memory', memory ? [memory.id] : [])
@@ -39,7 +42,7 @@ export default function MemoryDetail() {
   const [upload, setUpload] = useState<UploadStatus | null>(null)
   const [notice, setNotice] = useState<string | null>(() => {
     if (arrival?.failedPhotos) {
-      return `${arrival.failedPhotos} photo${arrival.failedPhotos > 1 ? 's' : ''} could not be uploaded. You can add ${arrival.failedPhotos > 1 ? 'them' : 'it'} again below.`
+      return arrival.failReason ?? `${arrival.failedPhotos} file${arrival.failedPhotos > 1 ? 's' : ''} could not be uploaded. You can add ${arrival.failedPhotos > 1 ? 'them' : 'it'} again below.`
     }
     if (arrival?.noteFailed) return 'Your note could not be saved. You can write it again below.'
     return null
@@ -69,7 +72,7 @@ export default function MemoryDetail() {
     setUpload(null)
     update((m) => ({ ...m, photos: [...m.photos, ...result.uploaded] }))
     if (result.failed) {
-      setNotice(`${result.failed} photo${result.failed > 1 ? 's' : ''} could not be uploaded. Please try again.`)
+      setNotice(result.reason ?? `${result.failed} file${result.failed > 1 ? 's' : ''} could not be uploaded. Please try again.`)
     }
   }
 
@@ -107,10 +110,10 @@ export default function MemoryDetail() {
     <Page>
       <div className="mb-3 flex items-center justify-between">
         <Link
-          to="/memories"
+          to={memory.kind === 'call' ? '/memories?tab=calls' : '/memories'}
           className="inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-ink-soft hover:text-peacock-deep"
         >
-          <ArrowLeft className="size-4" aria-hidden /> Our memories
+          <ArrowLeft className="size-4" aria-hidden /> {memory.kind === 'call' ? 'Our FaceTimes' : 'Our memories'}
         </Link>
         {mine && (
           <div className="flex gap-1">
@@ -141,9 +144,9 @@ export default function MemoryDetail() {
               type="button"
               className="block w-full"
               onClick={() => setViewing(0)}
-              aria-label="Open photo 1"
+              aria-label={isVideo(first) ? 'Play video 1' : 'Open photo 1'}
             >
-              <PrivatePhoto path={first.storage_path} alt={`${memory.title} — photo 1`} className="aspect-[4/3] rounded-xl" />
+              <MediaThumb item={first} full alt={`${memory.title} — 1`} className="aspect-[4/3] rounded-xl" />
             </button>
             {rest.length > 0 && (
               <ul className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
@@ -153,13 +156,9 @@ export default function MemoryDetail() {
                       type="button"
                       className="block w-full"
                       onClick={() => setViewing(i + 1)}
-                      aria-label={`Open photo ${i + 2}`}
+                      aria-label={`${isVideo(photo) ? 'Play video' : 'Open photo'} ${i + 2}`}
                     >
-                      <PrivatePhoto
-                        path={photo.thumb_path ?? photo.storage_path}
-                        alt={`${memory.title} — photo ${i + 2}`}
-                        className="aspect-square rounded-lg"
-                      />
+                      <MediaThumb item={photo} alt={`${memory.title} — ${i + 2}`} className="aspect-square rounded-lg" />
                     </button>
                   </li>
                 ))}
@@ -168,7 +167,7 @@ export default function MemoryDetail() {
           </div>
         ) : (
           <div className="flex h-28 items-center justify-center bg-parchment/70 text-sm text-ink-soft">
-            No photographs yet — add one below.
+            No photos or videos yet — add some below.
           </div>
         )}
 
@@ -176,6 +175,12 @@ export default function MemoryDetail() {
           {memory.emoji && <p className="text-3xl">{memory.emoji}</p>}
           <h1 className="mt-1 text-[2rem] leading-tight text-peacock-deep sm:text-4xl">{memory.title}</h1>
           <p className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-sm text-ink-soft">
+            {memory.kind === 'call' && (
+              <span className="inline-flex items-center gap-1 font-semibold text-peacock-deep">
+                <Video className="size-3.5" aria-hidden /> FaceTime
+                {memory.call_minutes ? ` · ${formatMinutes(memory.call_minutes)}` : ''}
+              </span>
+            )}
             <span>{formatLong(memory.happened_on)}</span>
             {memory.location && (
               <span className="inline-flex items-center gap-1">
@@ -211,10 +216,10 @@ export default function MemoryDetail() {
             <UploadProgress label={`Saving photo ${upload.current} of ${upload.total}…`} fraction={upload.fraction} />
           ) : (
             <label className="flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-full border border-peacock/25 bg-paper px-5 text-[0.95rem] font-semibold text-peacock-deep transition hover:bg-peacock-soft/60 focus-within:ring-2 focus-within:ring-peacock">
-              <Camera className="size-4" aria-hidden /> Add photographs
+              <Camera className="size-4" aria-hidden /> Add photos or videos
               <input
                 type="file"
-                accept="image/*"
+                accept="image/*,video/*"
                 multiple
                 className="sr-only"
                 onChange={(event) => {
@@ -509,13 +514,23 @@ function Lightbox({
           </div>
 
           <div className="relative flex min-h-0 flex-1 items-center justify-center p-3">
-            <PrivatePhoto
-              key={photo.id}
-              path={photo.storage_path}
-              alt={`${title} — photo ${index + 1}`}
-              className="size-full !bg-transparent"
-              imgClassName="object-contain"
-            />
+            {isVideo(photo) ? (
+              <PrivateVideo
+                key={photo.id}
+                item={photo}
+                autoPlay
+                label={`${title} — video ${index + 1}`}
+                className="max-h-full max-w-full rounded-lg"
+              />
+            ) : (
+              <PrivatePhoto
+                key={photo.id}
+                path={photo.storage_path}
+                alt={`${title} — photo ${index + 1}`}
+                className="size-full !bg-transparent"
+                imgClassName="object-contain"
+              />
+            )}
             {count > 1 && (
               <>
                 <button

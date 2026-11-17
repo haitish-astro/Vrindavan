@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { nameOf, useApp, useWorld } from '../app/AppContext'
 import { useChatStatus } from '../app/ChatContext'
+import { countdown, upcoming } from '../lib/calendar'
 import { useAsync } from '../lib/hooks'
 import { messageForToday } from '../lib/dailyMessages'
 import { dayOfYear, daysBetween, formatLong, timeAgo, todayISO } from '../lib/dates'
@@ -49,6 +50,8 @@ export default function Home() {
   const memories = useAsync(() => api.listMemories(space.id), [api, space.id])
   const letters = useAsync(() => api.listLetters(space.id), [api, space.id])
   const notes = useAsync(() => api.listQuickNotes(space.id, 40), [api, space.id])
+  const events = useAsync(() => api.listEvents(space.id).catch(() => []), [api, space.id])
+  const nextDate = useMemo(() => upcoming(events.data ?? [], 1)[0], [events.data])
   const theirNote = notes.data?.find((n) => n.author_id !== me.id)
   const myNote = notes.data?.find((n) => n.author_id === me.id)
 
@@ -64,8 +67,9 @@ export default function Home() {
     return sent.find((l) => l.author_id !== me.id) ?? sent[0]
   }, [letters.data, me.id])
 
-  const latest = memories.data?.[0]
-  const older = useMemo(() => (memories.data ?? []).slice(1), [memories.data])
+  // Latest adventure (FaceTimes have their own place); throwbacks can be either.
+  const latest = memories.data?.find((m) => m.kind !== 'call')
+  const older = useMemo(() => (memories.data ?? []).filter((m) => m.id !== latest?.id), [memories.data, latest?.id])
   const [throwbackSeed, setThrowbackSeed] = useState(() => Math.random())
   const throwback: Memory | undefined = older.length
     ? older[Math.floor(throwbackSeed * older.length) % older.length]
@@ -126,6 +130,20 @@ export default function Home() {
           </>
         )}
       </motion.section>
+
+      {/* the next special date */}
+      {nextDate && (
+        <motion.div {...rise(step++)}>
+          <Link to="/calendar" className="paper flex items-center gap-3 px-5 py-4 transition hover:-translate-y-0.5">
+            <span className="text-3xl leading-none">{nextDate.event.symbol ?? '♡'}</span>
+            <span className="min-w-0 flex-1">
+              <span className="eyebrow block">Coming up</span>
+              <span className="block truncate font-semibold text-ink">{nextDate.event.title}</span>
+            </span>
+            <span className="hand shrink-0 text-[1.35rem] text-rose-deep">{countdown(nextDate.date)}</span>
+          </Link>
+        </motion.div>
+      )}
 
       {/* chat */}
       <motion.div {...rise(step++)}>

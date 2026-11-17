@@ -1,5 +1,7 @@
 import { createClient, type RealtimeChannel, type Session } from '@supabase/supabase-js'
 import type {
+  CalendarEvent,
+  ScheduleBlock,
   ChessGame,
   LiveHandlers,
   ChatMessage,
@@ -74,12 +76,24 @@ function takeSignInFromUrl(): { access: string; refresh: string } | { failed: tr
 
 export async function createSupabaseApi(url: string, anonKey: string): Promise<Api> {
   const arrival = takeSignInFromUrl()
+  // Never keep anyone signed in between visits: forget any session an older
+  // version of the app saved on this device.
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i)
+      if (key && /^sb-.*-auth-token/.test(key)) localStorage.removeItem(key)
+    }
+  } catch {
+    // storage unavailable — nothing was saved
+  }
   const sb = createClient(url, anonKey, {
     auth: {
       // The emailed link must work in whichever browser the mail app opens,
       // so the session comes back in the link itself (handled above).
       flowType: 'implicit',
-      persistSession: true,
+      // The session lives only in this open page. Opening the link again —
+      // a new tab, a reload, a reopened browser — always asks for the password.
+      persistSession: false,
       autoRefreshToken: true,
       detectSessionInUrl: false,
     },
@@ -104,7 +118,12 @@ export async function createSupabaseApi(url: string, anonKey: string): Promise<A
   }
 
   // ── uploads (XHR so we can show real progress) ──
-  async function upload(path: string, blob: Blob, onProgress?: (fraction: number) => void) {
+  async function upload(
+    path: string,
+    blob: Blob,
+    onProgress?: (fraction: number) => void,
+    contentType = 'image/jpeg',
+  ) {
     const { data } = await sb.auth.getSession()
     const token = data.session?.access_token
     if (!token) throw new FriendlyError('Your session has ended. Please sign in again.')
@@ -114,7 +133,7 @@ export async function createSupabaseApi(url: string, anonKey: string): Promise<A
       xhr.open('POST', `${url}/storage/v1/object/${BUCKET}/${encoded}`)
       xhr.setRequestHeader('Authorization', `Bearer ${token}`)
       xhr.setRequestHeader('apikey', anonKey)
-      xhr.setRequestHeader('Content-Type', 'image/jpeg')
+      xhr.setRequestHeader('Content-Type', contentType)
       xhr.setRequestHeader('x-upsert', 'false')
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable) onProgress?.(event.loaded / event.total)
@@ -122,8 +141,14 @@ export async function createSupabaseApi(url: string, anonKey: string): Promise<A
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) resolve()
         else {
-          console.error('Photo upload failed', xhr.status, xhr.responseText)
-          reject(new FriendlyError('A photo could not be uploaded. Please try again.'))
+          console.error('Upload failed', xhr.status, xhr.responseText)
+          reject(
+            new FriendlyError(
+              xhr.status === 413
+                ? 'That file is too large to keep (50 MB at most).'
+                : 'A photo or video could not be uploaded. Please try again.',
+            ),
+          )
         }
       }
       xhr.onerror = () =>
@@ -352,11 +377,11 @@ export async function createSupabaseApi(url: string, anonKey: string): Promise<A
       return data ? sortMemory(data as Memory) : null
     },
 
-    async createMemory(spaceId, input) {
+    async createMemory(spaceId, input, kind = 'adventure') {
       const userId = await requireUserId()
       const { data, error } = await sb
         .from('memories')
-        .insert({ ...input, space_id: spaceId, created_by: userId })
+        .insert({ ...input, space_id: spaceId, created_by: userId, ...(kind === 'call' ? { kind } : {}) })
         .select('*')
         .single()
       check(error, 'This memory could not be saved.')
@@ -374,16 +399,19 @@ export async function createSupabaseApi(url: string, anonKey: string): Promise<A
       await removeFiles(memory.photos.flatMap((p) => [p.storage_path, p.thumb_path]))
     },
 
-    async addPhoto(memory, image, sortOrder, onProgress) {
+    async addPhoto(memory, media, sortOrder, onProgress) {
       const userId = await requireUserId()
       const name = crypto.randomUUID()
       const folder = `${memory.space_id}/${memory.id}`
-      const storagePath = `${folder}/${name}.jpg`
-      const thumbPath = `${folder}/${name}_thumb.jpg`
-      // The thumbnail is tiny; the full photo carries almost all the progress.
-      await upload(thumbPath, image.thumb)
+      const isVideo = 'video' in media
+      const storagePath = `${folder}/${name}.${isVideo ? media.ext : 'jpg'}`
+      const thumbBlob = isVideo ? media.poster : media.thumb
+      const thumbPath = thumbBlob ? `${folder}/${name}_thumb.jpg` : null
+      // The thumbnail is tiny; the full file carries almost all the progress.
+      if (thumbBlob && thumbPath) await upload(thumbPath, thumbBlob)
       onProgress(0.05)
-      await upload(storagePath, image.full, (f) => onProgress(0.05 + f * 0.9))
+      if (isVideo) await upload(storagePath, media.video, (f) => onProgress(0.05 + f * 0.9), media.type)
+      else await upload(storagePath, media.full, (f) => onProgress(0.05 + f * 0.9))
       const { data, error } = await sb
         .from('memory_photos')
         .insert({
@@ -392,9 +420,10 @@ export async function createSupabaseApi(url: string, anonKey: string): Promise<A
           uploaded_by: userId,
           storage_path: storagePath,
           thumb_path: thumbPath,
-          width: image.width,
-          height: image.height,
+          width: media.width,
+          height: media.height,
           sort_order: sortOrder,
+          ...(isVideo ? { kind: 'video', duration_seconds: media.duration } : {}),
         })
         .select('*')
         .single()
@@ -736,6 +765,64 @@ export async function createSupabaseApi(url: string, anonKey: string): Promise<A
       return () => {
         void sb.removeChannel(channel)
       }
+    },
+
+    // ── calendar ──
+    async listEvents(spaceId) {
+      const { data, error } = await sb
+        .from('calendar_events')
+        .select('*')
+        .eq('space_id', spaceId)
+        .order('event_date', { ascending: true })
+      check(error, 'We could not load the calendar.')
+      return (data ?? []) as CalendarEvent[]
+    },
+
+    async saveEvent(spaceId, existing, input) {
+      const userId = await requireUserId()
+      const query = existing
+        ? sb.from('calendar_events').update(input).eq('id', existing.id)
+        : sb.from('calendar_events').insert({ ...input, space_id: spaceId, created_by: userId })
+      const { data, error } = await query.select('*').single()
+      check(error, 'This date could not be saved.')
+      return data as CalendarEvent
+    },
+
+    async deleteEvent(id) {
+      const { error } = await sb.from('calendar_events').delete().eq('id', id)
+      check(error, 'This date could not be removed.')
+    },
+
+    // ── our week ──
+    async listBlocks(spaceId) {
+      const { data, error } = await sb
+        .from('schedule_blocks')
+        .select('*')
+        .eq('space_id', spaceId)
+        .order('start_minute', { ascending: true })
+      check(error, 'We could not load your week.')
+      return (data ?? []) as ScheduleBlock[]
+    },
+
+    async addBlocks(spaceId, inputs) {
+      const userId = await requireUserId()
+      const { data, error } = await sb
+        .from('schedule_blocks')
+        .insert(inputs.map((input) => ({ ...input, space_id: spaceId, user_id: userId })))
+        .select('*')
+      check(error, 'This could not be added to your week.')
+      return (data ?? []) as ScheduleBlock[]
+    },
+
+    async updateBlock(id, input) {
+      const { data, error } = await sb.from('schedule_blocks').update(input).eq('id', id).select('*').single()
+      check(error, 'Your change could not be saved.')
+      return data as ScheduleBlock
+    },
+
+    async deleteBlock(id) {
+      const { error } = await sb.from('schedule_blocks').delete().eq('id', id)
+      check(error, 'This could not be removed.')
     },
 
     // ── live presence ──

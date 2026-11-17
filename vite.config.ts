@@ -27,6 +27,7 @@ function contentSecurityPolicy(supabaseUrl: string): Plugin {
         "style-src 'self' 'unsafe-inline'",
         `img-src 'self' blob: data: ${origin}`.trim(),
         "font-src 'self'",
+        `media-src 'self' blob: ${origin}`.trim(),
         `connect-src 'self' ${origin} ${socket}`.trim(),
         "object-src 'none'",
         "base-uri 'self'",

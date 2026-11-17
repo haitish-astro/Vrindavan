@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef } from 'react'
-import { Camera, X } from 'lucide-react'
+import { Camera, Play, X } from 'lucide-react'
+import { isVideoFile } from '../lib/images'
 
 export interface PickedPhoto {
   key: string
@@ -13,13 +14,16 @@ export function PhotoPicker({
   onChange,
   multiple = true,
   max = 20,
-  label = 'Add photos',
+  label = 'Add photos or videos',
+  accept = 'image/*,video/*',
 }: {
   photos: PickedPhoto[]
   onChange: (photos: PickedPhoto[]) => void
   multiple?: boolean
   max?: number
   label?: string
+  /** what the file picker offers; photos and videos by default */
+  accept?: string
 }) {
   const inputId = useId()
   const latest = useRef(photos)
@@ -31,7 +35,7 @@ export function PhotoPicker({
   const add = (files: FileList | null) => {
     if (!files) return
     const picked = [...files]
-      .filter((file) => file.type.startsWith('image/'))
+      .filter((file) => file.type.startsWith('image/') || (accept.includes('video') && isVideoFile(file)))
       .map((file) => ({ key: crypto.randomUUID(), file, preview: URL.createObjectURL(file) }))
     if (multiple) {
       onChange([...photos, ...picked].slice(0, max))
@@ -52,7 +56,24 @@ export function PhotoPicker({
         <ul className="mb-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
           {photos.map((photo) => (
             <li key={photo.key} className="relative">
-              <img src={photo.preview} alt="" className="aspect-square w-full rounded-lg object-cover" />
+              {isVideoFile(photo.file) ? (
+                <div className="relative">
+                  <video
+                    src={photo.preview}
+                    muted
+                    playsInline
+                    preload="metadata"
+                    className="aspect-square w-full rounded-lg bg-ink/10 object-cover"
+                  />
+                  <span className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden>
+                    <span className="flex size-8 items-center justify-center rounded-full bg-ink/45 text-white">
+                      <Play className="ml-0.5 size-4 fill-white" />
+                    </span>
+                  </span>
+                </div>
+              ) : (
+                <img src={photo.preview} alt="" className="aspect-square w-full rounded-lg object-cover" />
+              )}
               <button
                 type="button"
                 onClick={() => remove(photo)}
@@ -71,11 +92,11 @@ export function PhotoPicker({
           className="flex min-h-20 cursor-pointer flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed border-peacock/30 bg-peacock-soft/30 px-4 py-4 text-center text-sm font-semibold text-peacock-deep transition hover:bg-peacock-soft/60 focus-within:ring-2 focus-within:ring-peacock"
         >
           <Camera className="size-5" aria-hidden />
-          {photos.length === 0 ? label : multiple ? 'Add more photos' : 'Choose a different photo'}
+          {photos.length === 0 ? label : multiple ? 'Add more' : 'Choose a different photo'}
           <input
             id={inputId}
             type="file"
-            accept="image/*"
+            accept={accept}
             multiple={multiple}
             className="sr-only"
             onChange={(event) => {

@@ -16,7 +16,7 @@ private storage) behind it, hosted as a static site on GitHub Pages.
 | 2. Core memories | Done | Add Memory, multi-photo upload, gallery, memory pages, notes from both, timeline |
 | 3. Communication | Done | Love letters with envelope opening, little notes, hearts, replies, live private chat, shared doodle board |
 | Extras | Done | Live cursors and strokes on the doodle board, typing and presence in chat, live chess |
-| 4. Shared experiences | Next | Special dates, countdowns, bucket list |
+| 4. Shared experiences | Mostly done | Videos in memories, FaceTime memories, calendar with countdowns and .ics export, each person's weekly schedule with "free together" (bucket list still to come) |
 | 5. Romantic polish | Later | Surprises, On This Day, hidden details |
 
 ---
@@ -33,6 +33,7 @@ Run the files in `supabase/migrations/` **in order** — paste each into a new q
 2. `20261111000200_memories.sql`
 3. `20261112000300_letters_chat.sql` (letters, notes, hearts, chat, doodle board)
 4. `20261112000400_live_and_chess.sql` (live cursors, typing, "here now", chess)
+5. `20261117000500_videos_calendar_week.sql` (videos, FaceTime memories, calendar, our week)
 
 All are safe to run more than once. (If your Supabase project is linked to this GitHub repo
 and already applied them, you will see `memories` in the Table Editor — running them again
@@ -148,6 +149,9 @@ The GitHub Pages URL and this code are public. The data is not.
   `service_role` key is never used by this project — do not add it anywhere.
 - **Strict Content-Security-Policy** in production: the page can only load its own files and
   talk to your Supabase project. Fonts are self-hosted; there are no analytics or third parties.
+- **A password on every visit.** The session is kept only in the open page — never saved on the
+  device — so opening the link again always asks for the password (the email is remembered).
+  After 10 minutes in the background the app locks itself and asks again.
 - **No passwords in the code.** Each person has their own password, checked and stored
   (hashed) by Supabase Auth — never in this repo or in the browser bundle. Nobody, including
   the project owner, can *see* a password. Each person changes their own under Our Details.

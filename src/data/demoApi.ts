@@ -7,6 +7,8 @@
  * production build (see loadApi in api.ts).
  */
 import type {
+  CalendarEvent,
+  ScheduleBlock,
   ChessGame,
   LiveHandlers,
   ChatHandlers,
@@ -75,6 +77,32 @@ export function createDemoApi(): Api {
   let messages: ChatMessage[] = []
   const reads: ChatRead[] = []
   let strokes: DoodleStroke[] = []
+  let events: CalendarEvent[] = []
+  // A sample week for "them", in another time zone, so the converted view can be seen in preview.
+  let blocks: ScheduleBlock[] = [
+    ...[1, 2, 3, 4, 5].map((weekday) => ({
+      id: `demo-work-${weekday}`,
+      space_id: 'demo-space',
+      user_id: partner.id,
+      label: 'Work (preview)',
+      weekday,
+      start_minute: 9 * 60,
+      end_minute: 17 * 60 + 30,
+      tz: 'America/New_York',
+      created_at: now(),
+    })),
+    ...[0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+      id: `demo-sleep-${weekday}`,
+      space_id: 'demo-space',
+      user_id: partner.id,
+      label: 'Sleep (preview)',
+      weekday,
+      start_minute: 23 * 60,
+      end_minute: 7 * 60,
+      tz: 'America/New_York',
+      created_at: now(),
+    })),
+  ]
   const chatSubs = new Set<ChatHandlers>()
   const doodleSubs = new Set<DoodleHandlers>()
   const files = new Map<string, string>()
@@ -242,10 +270,11 @@ export function createDemoApi(): Api {
       const memory = find(id)
       return memory ? { ...memory, photos: [...memory.photos], notes: [...memory.notes] } : null
     },
-    async createMemory(spaceId, input) {
+    async createMemory(spaceId, input, kind = 'adventure') {
       await wait()
       const memory: Memory = {
         ...input,
+        kind,
         id: crypto.randomUUID(),
         space_id: spaceId,
         created_by: me.id,
@@ -265,7 +294,7 @@ export function createDemoApi(): Api {
       await wait()
       memories = memories.filter((m) => m.id !== memory.id)
     },
-    async addPhoto(memory, image, sortOrder, onProgress) {
+    async addPhoto(memory, media, sortOrder, onProgress) {
       for (const step of [0.2, 0.5, 0.8, 1]) {
         await wait(120)
         onProgress(step)
@@ -278,13 +307,22 @@ export function createDemoApi(): Api {
         uploaded_by: me.id,
         storage_path: `${memory.space_id}/${memory.id}/${id}.jpg`,
         thumb_path: `${memory.space_id}/${memory.id}/${id}_thumb.jpg`,
-        width: image.width,
-        height: image.height,
+        width: media.width,
+        height: media.height,
         sort_order: sortOrder,
         created_at: now(),
       }
-      store(photo.storage_path, image.full)
-      store(photo.thumb_path!, image.thumb)
+      if ('video' in media) {
+        photo.kind = 'video'
+        photo.duration_seconds = media.duration
+        photo.storage_path = photo.storage_path.replace(/\.jpg$/, `.${media.ext}`)
+        store(photo.storage_path, media.video)
+        if (media.poster) store(photo.thumb_path!, media.poster)
+        else photo.thumb_path = null
+      } else {
+        store(photo.storage_path, media.full)
+        store(photo.thumb_path!, media.thumb)
+      }
       find(memory.id)?.photos.push(photo)
       return photo
     },
@@ -497,6 +535,55 @@ export function createDemoApi(): Api {
     subscribeDoodles(_spaceId, handlers) {
       doodleSubs.add(handlers)
       return () => doodleSubs.delete(handlers)
+    },
+
+    // ── calendar ──
+    async listEvents() {
+      await wait()
+      return [...events].sort((a, b) => a.event_date.localeCompare(b.event_date))
+    },
+    async saveEvent(spaceId, existing, input) {
+      await wait()
+      if (existing) {
+        const updated = { ...existing, ...input }
+        events = events.map((e) => (e.id === existing.id ? updated : e))
+        return updated
+      }
+      const created: CalendarEvent = { ...input, id: crypto.randomUUID(), space_id: spaceId, created_by: me.id, created_at: now() }
+      events.push(created)
+      return created
+    },
+    async deleteEvent(id) {
+      await wait()
+      events = events.filter((e) => e.id !== id)
+    },
+
+    // ── our week ──
+    async listBlocks() {
+      await wait()
+      return [...blocks]
+    },
+    async addBlocks(spaceId, inputs) {
+      await wait()
+      const created = inputs.map((input) => ({
+        ...input,
+        id: crypto.randomUUID(),
+        space_id: spaceId,
+        user_id: me.id,
+        created_at: now(),
+      }))
+      blocks.push(...created)
+      return created
+    },
+    async updateBlock(id, input) {
+      await wait()
+      const updated = { ...blocks.find((b) => b.id === id)!, ...input }
+      blocks = blocks.map((b) => (b.id === id ? updated : b))
+      return updated
+    },
+    async deleteBlock(id) {
+      await wait()
+      blocks = blocks.filter((b) => b.id !== id)
     },
 
     // ── live presence (between preview windows) ──
