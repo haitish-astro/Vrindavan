@@ -35,7 +35,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const inChat = pathname === '/chat'
 
   return (
-    <div className="relative min-h-dvh">
+    <div className={inChat ? 'relative flex h-dvh flex-col overflow-hidden' : 'relative min-h-dvh'}>
       <Sparkles count={8} />
       <Petals count={inChat ? 0 : 6} />
 
@@ -52,7 +52,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </p>
       )}
 
-      <header className="relative z-10 mx-auto flex max-w-3xl items-center justify-between px-5 pt-5 pb-2">
+      <header className="relative z-10 mx-auto flex w-full max-w-3xl shrink-0 items-center justify-between px-5 pt-5 pb-2">
         <Link to="/" className="flex items-center gap-2 text-peacock-deep" aria-label="Our Little Vrindavan — home">
           <Feather className="h-9 w-4" />
           <span className="font-serif text-xl italic">Our Little Vrindavan</span>
@@ -90,9 +90,14 @@ export function Layout({ children }: { children: ReactNode }) {
         </nav>
       </header>
 
-      <main id="main" className={`relative z-10 mx-auto max-w-3xl px-5 pt-4 ${inChat ? 'pb-0 sm:pb-6' : 'pb-32 sm:pb-16'}`}>
+      <main
+        id="main"
+        className={`relative z-10 mx-auto w-full max-w-3xl px-5 pt-4 ${inChat ? 'flex min-h-0 flex-1 flex-col pb-3 sm:pb-6' : 'pb-32 sm:pb-16'}`}
+      >
         {/* keyed by page, so each page plays its own gentle entrance */}
-        <div key={pathname}>{children}</div>
+        <div key={pathname} className={inChat ? 'flex min-h-0 flex-1 flex-col' : undefined}>
+          {children}
+        </div>
       </main>
 
       {/* phones: a floating bar within thumb's reach (hidden in chat, where the message box lives) */}

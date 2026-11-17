@@ -7,6 +7,7 @@
  * production build (see loadApi in api.ts).
  */
 import type {
+  MessageReaction,
   CalendarEvent,
   ScheduleBlock,
   ChessGame,
@@ -130,6 +131,8 @@ export function createDemoApi(): Api {
     | { kind: 'stroke'; data: DoodleStroke }
     | { kind: 'unstroke'; id: string }
     | { kind: 'chess'; data: ChessGame }
+    | { kind: 'reaction'; data: MessageReaction }
+    | { kind: 'unreaction'; id: string; messageId: string }
   const bus = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('vrindavan-preview') : null
   let otherWindowSeen = 0
   const post = (message: BusMessage) => bus?.postMessage(message)
@@ -185,6 +188,14 @@ export function createDemoApi(): Api {
     } else if (m.kind === 'unstroke') {
       strokes = strokes.filter((x) => x.id !== m.id)
       doodleSubs.forEach((sub) => sub.onDelete?.(m.id))
+    } else if (m.kind === 'reaction') {
+      const target = messages.find((x) => x.id === m.data.message_id)
+      if (target) target.reactions = [...(target.reactions ?? []).filter((r) => r.user_id !== m.data.user_id), m.data]
+      chatSubs.forEach((sub) => sub.onReaction?.(m.data))
+    } else if (m.kind === 'unreaction') {
+      const target = messages.find((x) => x.id === m.messageId)
+      if (target) target.reactions = (target.reactions ?? []).filter((r) => r.id !== m.id)
+      chatSubs.forEach((sub) => sub.onReactionRemoved?.(m.id))
     } else if (m.kind === 'chess') {
       chessGame = m.data
       chessSubs.forEach((fn) => fn(m.data))
@@ -474,20 +485,48 @@ export function createDemoApi(): Api {
       const older = before ? messages.filter((m) => m.created_at < before) : messages
       return older.slice(-limit)
     },
-    async sendMessage(spaceId, body) {
+    async sendMessage(spaceId, body, image, onProgress) {
       await wait(200)
-      const message: ChatMessage = { id: crypto.randomUUID(), space_id: spaceId, sender_id: me.id, body, created_at: now() }
+      const message: ChatMessage = { id: crypto.randomUUID(), space_id: spaceId, sender_id: me.id, body, created_at: now(), reactions: [] }
+      if (image) {
+        for (const step of [0.3, 0.7, 1]) {
+          await wait(120)
+          onProgress?.(step)
+        }
+        message.image_path = `${spaceId}/chat/${crypto.randomUUID()}.jpg`
+        message.image_width = image.width
+        message.image_height = image.height
+        store(message.image_path, image.full)
+        store(message.image_path.replace(/\.jpg$/, '_thumb.jpg'), image.thumb)
+      }
       messages.push(message)
       chatSubs.forEach((s) => s.onMessage?.(message))
       post({ kind: 'message', data: message })
       partnerResponds()
       return message
     },
-    async deleteMessage(id) {
+    async deleteMessage(message) {
       await wait()
+      const id = message.id
       messages = messages.filter((m) => m.id !== id)
       chatSubs.forEach((s) => s.onDelete?.(id))
       post({ kind: 'unsend', id })
+    },
+    async reactToMessage(messageId, emoji) {
+      await wait(120)
+      const target = messages.find((m) => m.id === messageId)
+      if (!target) throw new FriendlyError('Message not found.')
+      const existing = (target.reactions ?? []).find((r) => r.user_id === me.id)
+      target.reactions = (target.reactions ?? []).filter((r) => r.user_id !== me.id)
+      if (emoji) {
+        const reaction = { id: existing?.id ?? crypto.randomUUID(), message_id: messageId, user_id: me.id, emoji }
+        target.reactions.push(reaction)
+        chatSubs.forEach((s) => s.onReaction?.(reaction))
+        post({ kind: 'reaction', data: reaction })
+      } else if (existing) {
+        chatSubs.forEach((s) => s.onReactionRemoved?.(existing.id))
+        post({ kind: 'unreaction', id: existing.id, messageId })
+      }
     },
     async listChatReads() {
       return reads.map((r) => ({ ...r }))

@@ -155,8 +155,23 @@ export interface ChatMessage {
   id: string
   space_id: string
   sender_id: string
-  body: string
+  /** null for a photo sent without words */
+  body: string | null
+  image_path?: string | null
+  image_width?: number | null
+  image_height?: number | null
   created_at: string
+  reactions?: MessageReaction[]
+}
+
+export const MESSAGE_REACTIONS = ['❤️', '😂', '😮', '😢', '🔥', '👍', '🥺', '😘'] as const
+export type MessageReactionEmoji = (typeof MESSAGE_REACTIONS)[number]
+
+export interface MessageReaction {
+  id: string
+  message_id: string
+  user_id: string
+  emoji: string
 }
 
 export interface ChatRead {
@@ -168,6 +183,10 @@ export interface ChatHandlers {
   onMessage?: (message: ChatMessage) => void
   onDelete?: (id: string) => void
   onRead?: (read: ChatRead) => void
+  /** a reaction was added or changed */
+  onReaction?: (reaction: MessageReaction) => void
+  /** a reaction was taken back (by its id) */
+  onReactionRemoved?: (reactionId: string) => void
 }
 
 export interface DoodleStroke {

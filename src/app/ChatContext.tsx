@@ -118,7 +118,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         setUnread((n) => n + 1)
         notify({
           title: `${partnerName} ♡`,
-          body: message.body.length > 70 ? `${message.body.slice(0, 70)}…` : message.body,
+          body: !message.body ? '📷 sent you a photo' : message.body.length > 70 ? `${message.body.slice(0, 70)}…` : message.body,
           to: '/chat',
           linger: 6000,
         })

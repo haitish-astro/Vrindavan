@@ -115,8 +115,16 @@ export interface Api {
   // ── chat ──
   /** Oldest first. `before` loads the page of messages older than that time. */
   listMessages(spaceId: string, before?: string, limit?: number): Promise<ChatMessage[]>
-  sendMessage(spaceId: string, body: string): Promise<ChatMessage>
-  deleteMessage(id: string): Promise<void>
+  /** Words, a photo, or both. */
+  sendMessage(
+    spaceId: string,
+    body: string | null,
+    image?: PreparedImage,
+    onProgress?: (fraction: number) => void,
+  ): Promise<ChatMessage>
+  deleteMessage(message: Pick<ChatMessage, 'id' | 'image_path'>): Promise<void>
+  /** Set, change, or (with null) take back your reaction to a message. */
+  reactToMessage(messageId: string, emoji: string | null): Promise<void>
   listChatReads(spaceId: string): Promise<ChatRead[]>
   markChatRead(): Promise<void>
   countUnread(spaceId: string, since: string | null): Promise<number>

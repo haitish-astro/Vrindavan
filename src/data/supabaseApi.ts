@@ -1,5 +1,6 @@
 import { createClient, type RealtimeChannel, type Session } from '@supabase/supabase-js'
 import type {
+  MessageReaction,
   CalendarEvent,
   ScheduleBlock,
   ChessGame,
@@ -23,6 +24,9 @@ import { FriendlyError, type Api } from './api'
 
 const BUCKET = 'memories'
 const SIGNED_URL_SECONDS = 60 * 60
+/** Chat photos keep a small copy beside them: name.jpg → name_thumb.jpg */
+export const chatThumb = (path: string) => path.replace(/\.jpg$/, '_thumb.jpg')
+
 const MEMORY_SELECT = '*, photos:memory_photos(*), notes:memory_notes(*)'
 const LETTER_SELECT = '*, replies:letter_replies(*), opens:letter_opens(*)'
 
@@ -637,32 +641,60 @@ export async function createSupabaseApi(url: string, anonKey: string): Promise<A
 
     // ── chat ──
     async listMessages(spaceId, before, limit = 60) {
-      let query = sb
-        .from('messages')
-        .select('*')
-        .eq('space_id', spaceId)
-        .order('created_at', { ascending: false })
-        .limit(limit)
-      if (before) query = query.lt('created_at', before)
-      const { data, error } = await query
+      const page = (columns: string) => {
+        let query = sb
+          .from('messages')
+          .select(columns)
+          .eq('space_id', spaceId)
+          .order('created_at', { ascending: false })
+          .limit(limit)
+        if (before) query = query.lt('created_at', before)
+        return query
+      }
+      let { data, error } = await page('*, reactions:message_reactions(*)')
+      // Reactions arrive with a newer SQL file; until it has been run, chat still works without them.
+      if (error && (error.code === 'PGRST200' || error.code === 'PGRST205' || error.code === '42P01')) {
+        ;({ data, error } = await page('*'))
+      }
       check(error, 'We could not load your messages.')
-      return ((data ?? []) as ChatMessage[]).reverse()
+      return ((data ?? []) as unknown as ChatMessage[]).reverse()
     },
 
-    async sendMessage(spaceId, body) {
+    async sendMessage(spaceId, body, image, onProgress) {
       const userId = await requireUserId()
+      let imagePath: string | null = null
+      if (image) {
+        const name = crypto.randomUUID()
+        imagePath = `${spaceId}/chat/${name}.jpg`
+        await upload(`${spaceId}/chat/${name}_thumb.jpg`, image.thumb)
+        onProgress?.(0.1)
+        await upload(imagePath, image.full, (f) => onProgress?.(0.1 + f * 0.85))
+      }
       const { data, error } = await sb
         .from('messages')
-        .insert({ space_id: spaceId, sender_id: userId, body })
+        .insert({
+          space_id: spaceId,
+          sender_id: userId,
+          body,
+          ...(image ? { image_path: imagePath, image_width: image.width, image_height: image.height } : {}),
+        })
         .select('*')
         .single()
+      if (error && imagePath) await removeFiles([imagePath, chatThumb(imagePath)])
       check(error, 'Your message could not be sent.')
+      onProgress?.(1)
       return data as ChatMessage
     },
 
-    async deleteMessage(id) {
-      const { error } = await sb.from('messages').delete().eq('id', id)
+    async deleteMessage(message) {
+      const { error } = await sb.from('messages').delete().eq('id', message.id)
       check(error, 'This message could not be unsent.')
+      if (message.image_path) await removeFiles([message.image_path, chatThumb(message.image_path)])
+    },
+
+    async reactToMessage(messageId, emoji) {
+      const { error } = await sb.rpc('react_to_message', { target: messageId, reaction: emoji })
+      check(error, 'Your reaction could not be saved.')
     },
 
     async listChatReads(spaceId) {
@@ -711,8 +743,25 @@ export async function createSupabaseApi(url: string, anonKey: string): Promise<A
           },
         )
         .subscribe()
+      // Reactions on their own channel, so chat keeps working even before their table exists.
+      const reactions = sb
+        .channel(`chat-reactions:${spaceId}:${crypto.randomUUID()}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'message_reactions', filter: `space_id=eq.${spaceId}` },
+          (payload) => {
+            const row = payload.new as Partial<MessageReaction>
+            if (row?.id && row.message_id && row.user_id && row.emoji) handlers.onReaction?.(row as MessageReaction)
+          },
+        )
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'message_reactions' }, (payload) => {
+          const id = (payload.old as { id?: string }).id
+          if (id) handlers.onReactionRemoved?.(id)
+        })
+        .subscribe()
       return () => {
         void sb.removeChannel(channel)
+        void sb.removeChannel(reactions)
       }
     },
 
