@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Link } from 'react-router'
 import { motion } from 'motion/react'
 import {
-  CalendarHeart,
   ChevronRight,
   Video,
   Crown,
@@ -18,7 +17,6 @@ import { Feather } from '../components/Decor'
 import { Button, ConfirmDialog, Page, PageHeader } from '../components/ui'
 
 const PLACES: { to: string; title: string; text: string; icon: LucideIcon }[] = [
-  { to: '/calendar', title: 'Calendar', text: 'Special dates, countdowns, and both of your weeks.', icon: CalendarHeart },
   { to: '/memories?tab=calls', title: 'FaceTime', text: 'The calls that kept us close.', icon: Video },
   { to: '/story', title: 'Our Story', text: 'The timeline of us, milestone by milestone.', icon: ScrollText },
   { to: '/doodle', title: 'Doodle Board', text: 'A shared sheet of paper — draw together, live.', icon: Palette },

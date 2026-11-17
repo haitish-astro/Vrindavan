@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link, NavLink, useLocation } from 'react-router'
 import { motion } from 'motion/react'
-import { Flower2, House, Images, Mail, MessageCircleHeart, type LucideIcon } from 'lucide-react'
+import { CalendarHeart, Flower2, House, Images, Mail, MessageCircleHeart, type LucideIcon } from 'lucide-react'
 import { useApp } from '../app/AppContext'
 import { useChatStatus } from '../app/ChatContext'
 import { Feather, Petals, Sparkles } from './Decor'
@@ -11,6 +11,7 @@ const DESTINATIONS: { to: string; label: string; icon: LucideIcon; end?: boolean
   { to: '/memories', label: 'Memories', icon: Images },
   { to: '/letters', label: 'Letters', icon: Mail },
   { to: '/chat', label: 'Chat', icon: MessageCircleHeart },
+  { to: '/calendar', label: 'Calendar', icon: CalendarHeart },
   { to: '/world', label: 'Our World', icon: Flower2 },
 ]
 
@@ -65,7 +66,7 @@ export function Layout({ children }: { children: ReactNode }) {
               to={to}
               end={end}
               className={({ isActive }) =>
-                `relative rounded-full px-3 py-2 text-sm font-semibold transition ${
+                `relative rounded-full px-2.5 py-2 text-sm font-semibold whitespace-nowrap transition ${
                   isActive ? 'text-peacock-deep' : 'text-ink-soft hover:text-peacock-deep'
                 }`
               }
@@ -106,14 +107,14 @@ export function Layout({ children }: { children: ReactNode }) {
           aria-label="Main"
           className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:hidden"
         >
-          <ul className="mx-auto flex max-w-md items-stretch justify-between rounded-full border border-gold/30 bg-paper/95 px-1.5 py-1.5 shadow-polaroid backdrop-blur">
+          <ul className="mx-auto flex max-w-md items-stretch justify-between rounded-full border border-gold/30 bg-paper/95 px-1 py-1.5 shadow-polaroid backdrop-blur">
             {DESTINATIONS.map(({ to, label, icon: Icon, end }) => (
               <li key={to} className="flex-1">
                 <NavLink
                   to={to}
                   end={end}
                   className={({ isActive }) =>
-                    `relative flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-full text-[0.64rem] font-semibold transition ${
+                    `relative flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-full text-[0.6rem] font-semibold whitespace-nowrap transition ${
                       isActive ? 'text-peacock-deep' : 'text-ink-soft'
                     }`
                   }
