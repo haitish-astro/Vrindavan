@@ -5,6 +5,14 @@ import type { Memory } from '../lib/types'
 import { formatShort } from '../lib/dates'
 import { PrivatePhoto } from './ui'
 
+/** The cover's small copy and full photo (videos only have their still frame). */
+export function coverSource(memory: Memory): { thumb: string | null; full: string | null } {
+  const first = memory.photos.find((p) => p.kind !== 'video') ?? memory.photos[0]
+  if (!first) return { thumb: null, full: null }
+  if (first.kind === 'video') return { thumb: first.thumb_path, full: null }
+  return { thumb: first.thumb_path ?? first.storage_path, full: first.storage_path }
+}
+
 export function coverPath(memory: Memory, size: 'thumb' | 'full' = 'thumb'): string | null {
   // Prefer a photo for the cover; a video lends its still frame if that is all there is.
   const first = memory.photos.find((p) => p.kind !== 'video') ?? memory.photos[0]
@@ -32,7 +40,8 @@ export function Polaroid({ memory, index = 0, large = false }: { memory: Memory;
       >
         <div className="relative">
           <PrivatePhoto
-            path={coverPath(memory, large ? 'full' : 'thumb')}
+            path={coverSource(memory).thumb}
+            fullPath={coverSource(memory).full}
             alt=""
             className={`rounded-sm ${large ? 'aspect-[4/3]' : 'aspect-square'}`}
           />

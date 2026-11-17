@@ -6,7 +6,7 @@ import { useApp, useWorld } from '../app/AppContext'
 import { useAsync } from '../lib/hooks'
 import { formatMinutes, formatShort, yearOf } from '../lib/dates'
 import type { Memory } from '../lib/types'
-import { Polaroid, coverPath } from '../components/Polaroid'
+import { Polaroid, coverSource } from '../components/Polaroid'
 import { ButtonLink, EmptyState, ErrorNote, Page, PageHeader, PrivatePhoto, Spinner } from '../components/ui'
 
 type Tab = 'adventures' | 'calls'
@@ -154,7 +154,7 @@ export default function Memories() {
 
 /** A FaceTime memory, shown as a little phone screen. */
 function CallCard({ memory, index }: { memory: Memory; index: number }) {
-  const cover = coverPath(memory)
+  const cover = coverSource(memory)
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -169,8 +169,8 @@ function CallCard({ memory, index }: { memory: Memory; index: number }) {
         aria-label={`${memory.title}, FaceTime on ${formatShort(memory.happened_on)}`}
       >
         <div className="relative aspect-[9/14] overflow-hidden rounded-[1.4rem]">
-          {cover ? (
-            <PrivatePhoto path={cover} alt="" className="size-full" />
+          {cover.thumb ? (
+            <PrivatePhoto path={cover.thumb} fullPath={cover.full} alt="" className="size-full" />
           ) : (
             <div className="flex size-full items-center justify-center bg-gradient-to-br from-blush via-lavender to-peacock-soft">
               <span className="text-4xl">{memory.emoji ?? '📞'}</span>

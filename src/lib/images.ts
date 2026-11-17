@@ -8,8 +8,8 @@ export interface PreparedImage {
   height: number
 }
 
-const FULL_MAX = 2000
-const THUMB_MAX = 640
+const FULL_MAX = 2560
+const THUMB_MAX = 1024
 const MAX_INPUT_BYTES = 40 * 1024 * 1024
 
 /** Its message is written for people, so screens can show it as-is. */
@@ -72,8 +72,8 @@ export async function prepareImage(file: File): Promise<PreparedImage> {
   }
   const source = await decode(file)
   try {
-    const full = await render(source, FULL_MAX, 0.82)
-    const thumb = await render(source, THUMB_MAX, 0.75)
+    const full = await render(source, FULL_MAX, 0.88)
+    const thumb = await render(source, THUMB_MAX, 0.84)
     return { full: full.blob, thumb: thumb.blob, width: full.width, height: full.height }
   } finally {
     if ('close' in source) source.close()
@@ -143,12 +143,12 @@ function readVideo(file: File): Promise<{ poster: Blob | null; width: number | n
       const height = video.videoHeight || null
       const duration = Number.isFinite(video.duration) ? video.duration : null
       try {
-        const scale = Math.min(1, 640 / Math.max(width ?? 640, height ?? 640))
+        const scale = Math.min(1, 1280 / Math.max(width ?? 1280, height ?? 1280))
         const canvas = document.createElement('canvas')
         canvas.width = Math.max(1, Math.round((width ?? 640) * scale))
         canvas.height = Math.max(1, Math.round((height ?? 640) * scale))
         canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height)
-        canvas.toBlob((blob) => done({ poster: blob, width, height, duration }), 'image/jpeg', 0.78)
+        canvas.toBlob((blob) => done({ poster: blob, width, height, duration }), 'image/jpeg', 0.85)
       } catch {
         done({ poster: null, width, height, duration })
       }

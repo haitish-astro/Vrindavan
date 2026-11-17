@@ -22,6 +22,7 @@ import LetterCompose from './pages/LetterCompose'
 import Chat from './pages/Chat'
 import Doodle from './pages/Doodle'
 import { ChatProvider } from './app/ChatContext'
+import { TogetherProvider } from './app/TogetherContext'
 import { CursorGlow } from './components/CursorGlow'
 import Chess from './pages/Chess'
 import Calendar from './pages/Calendar'
@@ -111,7 +112,9 @@ function Gate() {
 
   return (
     <ChatProvider>
-      <Layout>{outlet}</Layout>
+      <TogetherProvider>
+        <Layout>{outlet}</Layout>
+      </TogetherProvider>
     </ChatProvider>
   )
 }

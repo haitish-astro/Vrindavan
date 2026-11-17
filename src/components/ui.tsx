@@ -1,5 +1,5 @@
 /** Small shared building blocks: buttons, page shell, states, dialogs. */
-import { useEffect, useId, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { Link, type LinkProps } from 'react-router'
 import { AnimatePresence, motion } from 'motion/react'
 import { ImageOff, LoaderCircle } from 'lucide-react'
@@ -7,6 +7,9 @@ import { usePhotoUrl } from '../lib/hooks'
 import { Lotus } from './Decor'
 
 type Variant = 'primary' | 'soft' | 'ghost' | 'danger'
+
+/** Small copies are at most this many pixels on their long side (older ones 640). */
+const SMALL_COPY_PX = 600
 
 export function buttonClass(variant: Variant = 'primary', extra = '') {
   const base =
@@ -117,18 +120,39 @@ export function EmptyState({ title, children, action }: { title: string; childre
 /** A photo from private storage, with a soft placeholder and a graceful fallback. */
 export function PrivatePhoto({
   path,
+  fullPath,
   alt,
   className = '',
   imgClassName = 'object-cover',
 }: {
+  /** the small copy, used when it is sharp enough for the space it fills */
   path: string | null | undefined
+  /** the full photo, used when the space is bigger than the small copy can fill sharply */
+  fullPath?: string | null
   alt: string
   className?: string
   imgClassName?: string
 }) {
-  const { url, failed } = usePhotoUrl(path)
+  const box = useRef<HTMLDivElement>(null)
+  // Decide once we know how big the photo is drawn (× screen sharpness).
+  const [useFull, setUseFull] = useState<boolean | null>(fullPath ? null : false)
+  useLayoutEffect(() => {
+    if (!fullPath || !box.current) return
+    const decide = () => {
+      const el = box.current
+      if (!el) return
+      const needed = Math.max(el.clientWidth, el.clientHeight) * Math.min(window.devicePixelRatio || 1, 3)
+      if (needed > 0) setUseFull((current) => current || needed > SMALL_COPY_PX)
+    }
+    decide()
+    const observer = new ResizeObserver(decide)
+    observer.observe(box.current)
+    return () => observer.disconnect()
+  }, [fullPath])
+  const chosen = useFull === null ? null : useFull && fullPath ? fullPath : path
+  const { url, failed } = usePhotoUrl(chosen)
   return (
-    <div className={`relative overflow-hidden bg-parchment ${className}`}>
+    <div ref={box} className={`relative overflow-hidden bg-parchment ${className}`}>
       {url ? (
         <motion.img
           src={url}

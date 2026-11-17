@@ -1,5 +1,7 @@
 import type { PreparedImage, PreparedMedia } from '../lib/images'
 import type {
+  Section,
+  UpdateCounts,
   CalendarEvent,
   CalendarEventInput,
   ScheduleBlock,
@@ -140,6 +142,14 @@ export interface Api {
 
   // ── live presence: private, members-only channels ──
   joinRoom(spaceId: string, room: LiveRoomName, userId: string, handlers: LiveHandlers): LiveRoom
+
+  // ── being together ──
+  /** "I'm here" — updates last_seen_at for "last here 2 h ago". */
+  touchLastSeen(): Promise<void>
+  /** Record that you just looked at a part of the app. */
+  markSeen(section: Section): Promise<void>
+  /** New things your love added since you last looked at each part. */
+  countUpdates(spaceId: string, userId: string): Promise<UpdateCounts>
 
   // ── chess ──
   latestChessGame(spaceId: string): Promise<ChessGame | null>

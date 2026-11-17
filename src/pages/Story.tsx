@@ -8,7 +8,7 @@ import { useAsync } from '../lib/hooks'
 import { formatLong, isFuture, todayISO } from '../lib/dates'
 import { prepareImage } from '../lib/images'
 import type { Memory, Milestone } from '../lib/types'
-import { coverPath } from '../components/Polaroid'
+import { coverSource } from '../components/Polaroid'
 import { PhotoPicker, type PickedPhoto } from '../components/PhotoPicker'
 import {
   Button,
@@ -186,12 +186,13 @@ function TimelineItem({
   const title = isMemory ? entry.memory.title : entry.milestone.title
   const description = isMemory ? entry.memory.description : entry.milestone.description
   const location = isMemory ? entry.memory.location : entry.milestone.location
-  const photo = isMemory ? coverPath(entry.memory) : entry.milestone.photo_path
+  const photo = isMemory ? coverSource(entry.memory).thumb : entry.milestone.photo_path
+  const photoFull = isMemory ? coverSource(entry.memory).full : null
   const upcoming = isFuture(entry.date)
 
   const body = (
     <>
-      {photo && <PrivatePhoto path={photo} alt="" className="mb-3 aspect-[16/10] rounded-xl" />}
+      {photo && <PrivatePhoto path={photo} fullPath={photoFull} alt="" className="mb-3 aspect-[16/10] rounded-xl" />}
       <h2 className="text-2xl leading-tight text-peacock-deep">
         {isMemory && entry.memory.emoji && <span className="mr-1.5 text-xl">{entry.memory.emoji}</span>}
         {title}

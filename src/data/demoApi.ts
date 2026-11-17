@@ -124,7 +124,7 @@ export function createDemoApi(): Api {
   // ── cross-window bus (preview only) ──
   type BusMessage =
     | { kind: 'room'; topic: string; event: string; payload: Record<string, unknown>; from: string }
-    | { kind: 'presence'; topic: string; userId: string; here: boolean }
+    | { kind: 'presence'; topic: string; userId: string; here: boolean; state?: Record<string, unknown> }
     | { kind: 'message'; data: ChatMessage }
     | { kind: 'unsend'; id: string }
     | { kind: 'read'; data: ChatRead }
@@ -143,6 +143,9 @@ export function createDemoApi(): Api {
     heartbeat?: ReturnType<typeof setInterval>
   }
   const demoRooms = new Map<string, DemoRoom>()
+  const myStates = new Map<string, Record<string, unknown>>()
+  const peerStates = new Map<string, Record<string, unknown>>() // `${topic}|${userId}` → state
+  const seenAt: Partial<Record<string, string>> = {}
   const announce = (topic: string) => {
     const room = demoRooms.get(topic)
     if (!room) return
@@ -151,7 +154,11 @@ export function createDemoApi(): Api {
       if (seen < cutoff) room.peers.delete(id)
     })
     const ids = [me.id, ...room.peers.keys()]
-    room.handlers.forEach((h) => h.onPresence?.(ids))
+    const states = Object.fromEntries(ids.map((id) => [id, id === me.id ? (myStates.get(topic) ?? {}) : (peerStates.get(`${topic}|${id}`) ?? {})]))
+    room.handlers.forEach((h) => {
+      h.onPresence?.(ids)
+      h.onPresenceState?.(states)
+    })
   }
 
   let chessGame: ChessGame | null = null
@@ -168,7 +175,8 @@ export function createDemoApi(): Api {
       if (m.here) {
         const isNew = !room.peers.has(m.userId)
         room.peers.set(m.userId, Date.now())
-        if (isNew) post({ kind: 'presence', topic: m.topic, userId: me.id, here: true })
+        if (m.state) peerStates.set(`${m.topic}|${m.userId}`, m.state)
+        if (isNew) post({ kind: 'presence', topic: m.topic, userId: me.id, here: true, state: myStates.get(m.topic) })
       } else room.peers.delete(m.userId)
       announce(m.topic)
     } else if (m.kind === 'message') {
@@ -632,7 +640,7 @@ export function createDemoApi(): Api {
       if (!room) {
         const created: DemoRoom = { handlers: new Set(), peers: new Map() }
         created.heartbeat = setInterval(() => {
-          post({ kind: 'presence', topic, userId: me.id, here: true })
+          post({ kind: 'presence', topic, userId: me.id, here: true, state: myStates.get(topic) })
           announce(topic)
         }, 1500)
         demoRooms.set(topic, created)
@@ -648,6 +656,11 @@ export function createDemoApi(): Api {
         send(event, payload) {
           if (!left) post({ kind: 'room', topic, event, payload: { ...payload, from: me.id }, from: me.id })
         },
+        track(state) {
+          if (left) return
+          myStates.set(topic, state)
+          post({ kind: 'presence', topic, userId: me.id, here: true, state })
+        },
         leave() {
           if (left) return
           left = true
@@ -658,6 +671,27 @@ export function createDemoApi(): Api {
             post({ kind: 'presence', topic, userId: me.id, here: false })
           }
         },
+      }
+    },
+
+    // ── being together ──
+    async touchLastSeen() {},
+    async markSeen(section) {
+      seenAt[section] = now()
+    },
+    async countUpdates() {
+      const since = (s: string) => seenAt[s] ?? new Date(Date.now() - 7 * 86_400_000).toISOString()
+      const newer = (list: { created_at: string }[], s: string) => list.filter((x) => x.created_at > since(s)).length
+      return {
+        memories: newer(memories.filter((m) => m.created_by !== me.id), 'memories'),
+        letters:
+          letters.filter((l) => l.status === 'sent' && l.author_id !== me.id && (l.sent_at ?? '') > since('letters')).length +
+          newer(quickNotes.filter((n) => n.author_id !== me.id), 'letters'),
+        calendar: newer(events.filter((e) => e.created_by !== me.id), 'calendar'),
+        doodles: newer(strokes.filter((s) => s.author_id !== me.id), 'world'),
+        chessTurn: Boolean(
+          chessGame && chessGame.status === 'active' && (chessGame.moves.length % 2 === 0 ? chessGame.white_id : chessGame.black_id) === me.id,
+        ),
       }
     },
 

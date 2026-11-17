@@ -201,6 +201,9 @@ export async function createSupabaseApi(url: string, anonKey: string): Promise<A
     peers: string[]
     status: 'connecting' | 'live' | 'offline'
     closeTimer?: ReturnType<typeof setTimeout>
+    states: Record<string, Record<string, unknown>>
+    tracked: Record<string, unknown>
+    subscribed: boolean
   }
   const rooms = new Map<string, RoomEntry>()
 
@@ -208,7 +211,16 @@ export async function createSupabaseApi(url: string, anonKey: string): Promise<A
     const channel = sb.channel(topic, {
       config: { private: true, broadcast: { self: false, ack: false }, presence: { key: userId } },
     })
-    const entry: RoomEntry = { channel, handlers: new Set(), refs: 0, peers: [], status: 'connecting' }
+    const entry: RoomEntry = {
+      channel,
+      handlers: new Set(),
+      refs: 0,
+      peers: [],
+      status: 'connecting',
+      states: {},
+      tracked: { online_at: new Date().toISOString() },
+      subscribed: false,
+    }
     const setStatus = (status: RoomEntry['status']) => {
       entry.status = status
       entry.handlers.forEach((h) => h.onStatus?.(status))
@@ -220,8 +232,13 @@ export async function createSupabaseApi(url: string, anonKey: string): Promise<A
       entry.handlers.forEach((h) => h.onEvent?.(message.event, payload, from))
     })
     channel.on('presence', { event: 'sync' }, () => {
-      entry.peers = Object.keys(channel.presenceState())
-      entry.handlers.forEach((h) => h.onPresence?.(entry.peers))
+      const raw = channel.presenceState() as Record<string, Record<string, unknown>[]>
+      entry.peers = Object.keys(raw)
+      entry.states = Object.fromEntries(Object.entries(raw).map(([key, metas]) => [key, metas[metas.length - 1] ?? {}]))
+      entry.handlers.forEach((h) => {
+        h.onPresence?.(entry.peers)
+        h.onPresenceState?.(entry.states)
+      })
     })
     // Private channels need the signed-in token before joining.
     void sb.realtime
@@ -231,8 +248,10 @@ export async function createSupabaseApi(url: string, anonKey: string): Promise<A
         channel.subscribe((status) => {
           if (status === 'SUBSCRIBED') {
             setStatus('live')
-            void channel.track({ online_at: new Date().toISOString() })
+            entry.subscribed = true
+            void channel.track(entry.tracked)
           } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+            entry.subscribed = false
             setStatus('offline')
           }
         })
@@ -890,12 +909,20 @@ export async function createSupabaseApi(url: string, anonKey: string): Promise<A
       room$.handlers.add(handlers)
       room$.refs++
       handlers.onStatus?.(room$.status)
-      if (room$.peers.length) handlers.onPresence?.(room$.peers)
+      if (room$.peers.length) {
+        handlers.onPresence?.(room$.peers)
+        handlers.onPresenceState?.(room$.states)
+      }
       let left = false
       return {
         send(event, payload) {
           if (left) return
           void room$.channel.send({ type: 'broadcast', event, payload: { ...payload, from: userId } })
+        },
+        track(state) {
+          if (left) return
+          room$.tracked = { ...state, online_at: room$.tracked.online_at }
+          if (room$.subscribed) void room$.channel.track(room$.tracked)
         },
         leave() {
           if (left) return
@@ -911,6 +938,49 @@ export async function createSupabaseApi(url: string, anonKey: string): Promise<A
           }
         },
       }
+    },
+
+    // ── being together ──
+    async touchLastSeen() {
+      const { error } = await sb.rpc('touch_last_seen')
+      if (error && error.code !== 'PGRST202') console.error('Could not update last seen', error.message)
+    },
+
+    async markSeen(section) {
+      const { error } = await sb.rpc('mark_section_seen', { which: section })
+      if (error && error.code !== 'PGRST202') console.error('Could not mark as seen', error.message)
+    },
+
+    async countUpdates(spaceId, userId) {
+      const fallback = new Date(Date.now() - 7 * 86_400_000).toISOString()
+      const seenRows = await sb.from('section_seen').select('section, seen_at').eq('user_id', userId)
+      const seen = Object.fromEntries(((seenRows.data ?? []) as { section: string; seen_at: string }[]).map((r) => [r.section, r.seen_at]))
+      const since = (section: string) => seen[section] ?? fallback
+      // Each count quietly becomes 0 if its table does not exist yet.
+      const count = async (table: string, author: string, section: string, extra?: (q: any) => any, dateColumn = 'created_at') => {
+        let query = sb
+          .from(table)
+          .select('id', { count: 'exact', head: true })
+          .eq('space_id', spaceId)
+          .neq(author, userId)
+          .gt(dateColumn, since(section))
+        if (extra) query = extra(query)
+        const { count: n, error } = await query
+        return error ? 0 : (n ?? 0)
+      }
+      const [memories, letters, notes, calendar, doodles, chess] = await Promise.all([
+        count('memories', 'created_by', 'memories'),
+        count('letters', 'author_id', 'letters', (q) => q.eq('status', 'sent'), 'sent_at'),
+        count('quick_notes', 'author_id', 'letters'),
+        count('calendar_events', 'created_by', 'calendar'),
+        count('doodle_strokes', 'author_id', 'world'),
+        sb.from('chess_games').select('white_id, black_id, moves, status').eq('space_id', spaceId).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+      ])
+      const game = chess.error ? null : (chess.data as { white_id: string; black_id: string; moves: string[]; status: string } | null)
+      const chessTurn = Boolean(
+        game && game.status === 'active' && (game.moves.length % 2 === 0 ? game.white_id : game.black_id) === userId,
+      )
+      return { memories, letters: letters + notes, calendar, doodles, chessTurn }
     },
 
     // ── chess ──

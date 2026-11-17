@@ -35,6 +35,7 @@ Run the files in `supabase/migrations/` **in order** — paste each into a new q
 4. `20261112000400_live_and_chess.sql` (live cursors, typing, "here now", chess)
 5. `20261117000500_videos_calendar_week.sql` (videos, FaceTime memories, calendar, our week)
 6. `20261117000600_chat_photos_reactions.sql` (photos in chat, reactions on messages)
+7. `20261118000700_presence_seen.sql` ("last here", and the badges for new things)
 
 All are safe to run more than once. (If your Supabase project is linked to this GitHub repo
 and already applied them, you will see `memories` in the Table Editor — running them again

@@ -17,6 +17,7 @@ import {
 import { nameOf, useApp, useWorld } from '../app/AppContext'
 import { useChatStatus } from '../app/ChatContext'
 import { countdown, upcoming } from '../lib/calendar'
+import { TogetherCard } from '../components/Together'
 import { useAsync } from '../lib/hooks'
 import { messageForToday } from '../lib/dailyMessages'
 import { dayOfYear, daysBetween, formatLong, timeAgo, todayISO } from '../lib/dates'
@@ -51,7 +52,11 @@ export default function Home() {
   const letters = useAsync(() => api.listLetters(space.id), [api, space.id])
   const notes = useAsync(() => api.listQuickNotes(space.id, 40), [api, space.id])
   const events = useAsync(() => api.listEvents(space.id).catch(() => []), [api, space.id])
-  const nextDate = useMemo(() => upcoming(events.data ?? [], 1)[0], [events.data])
+  // Only something within the next 60 days is "coming up" on Home.
+  const nextDate = useMemo(() => {
+    const next = upcoming(events.data ?? [], 1)[0]
+    return next && daysBetween(todayISO(), next.date) <= 60 ? next : undefined
+  }, [events.data])
   const theirNote = notes.data?.find((n) => n.author_id !== me.id)
   const myNote = notes.data?.find((n) => n.author_id === me.id)
 
@@ -84,6 +89,11 @@ export default function Home() {
         {me.display_name && <p className="eyebrow mb-2">Radhe Radhe, {me.display_name}</p>}
         <h1 className="mx-auto max-w-md text-[2rem] leading-tight text-peacock-deep sm:text-4xl">{greeting}</h1>
       </motion.section>
+
+      {/* where your love is right now */}
+      <motion.div {...rise(step++)}>
+        <TogetherCard />
+      </motion.div>
 
       {/* their latest note to you, and a place to leave yours for them */}
       <motion.div {...rise(step++)}>
@@ -156,9 +166,14 @@ export default function Home() {
           <motion.span
             animate={unread > 0 ? { scale: [1, 1.18, 1] } : { scale: 1 }}
             transition={{ duration: 1.4, repeat: unread > 0 ? Infinity : 0 }}
-            className="flex"
+            className="relative flex"
           >
             <MessageCircleHeart className={`size-6 ${unread > 0 ? 'text-white' : 'text-rose'}`} aria-hidden />
+            {unread > 0 && (
+              <span className="absolute -top-2 -right-2.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-peacock bg-rose-deep px-1 text-[0.65rem] font-bold text-white">
+                {unread > 99 ? '99+' : unread}
+              </span>
+            )}
           </motion.span>
           <span className="flex-1 font-semibold">
             {unread > 0

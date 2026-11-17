@@ -26,7 +26,11 @@ export function MediaThumb({
   full?: boolean
 }) {
   if (!isVideo(item)) {
-    return <PrivatePhoto path={full ? item.storage_path : (item.thumb_path ?? item.storage_path)} alt={alt} className={className} />
+    return full ? (
+      <PrivatePhoto path={item.storage_path} alt={alt} className={className} />
+    ) : (
+      <PrivatePhoto path={item.thumb_path ?? item.storage_path} fullPath={item.storage_path} alt={alt} className={className} />
+    )
   }
   return (
     <div className={`relative overflow-hidden ${className}`}>

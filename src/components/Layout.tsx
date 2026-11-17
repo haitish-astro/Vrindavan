@@ -4,6 +4,8 @@ import { motion } from 'motion/react'
 import { CalendarHeart, Flower2, House, Images, Mail, MessageCircleHeart, type LucideIcon } from 'lucide-react'
 import { useApp } from '../app/AppContext'
 import { useChatStatus } from '../app/ChatContext'
+import { useTogether } from '../app/TogetherContext'
+import { PartnerAvatar } from './Together'
 import { Feather, Petals, Sparkles } from './Decor'
 
 const DESTINATIONS: { to: string; label: string; icon: LucideIcon; end?: boolean }[] = [
@@ -15,13 +17,24 @@ const DESTINATIONS: { to: string; label: string; icon: LucideIcon; end?: boolean
   { to: '/world', label: 'Our World', icon: Flower2 },
 ]
 
-function Badge({ count }: { count: number }) {
+/** A number for new things, or just a dot when there is no sensible number. */
+function Badge({ count, dot = false, inline = false }: { count: number; dot?: boolean; inline?: boolean }) {
+  if (dot && count <= 0) {
+    return (
+      <motion.span
+        initial={{ scale: 0 }}
+        animate={{ scale: 1 }}
+        className={`${inline ? 'ml-1 inline-block align-super' : 'absolute -top-0.5 -right-1'} size-2.5 rounded-full border-2 border-paper bg-rose-deep`}
+        aria-label="something new"
+      />
+    )
+  }
   if (count <= 0) return null
   return (
     <motion.span
       initial={{ scale: 0 }}
       animate={{ scale: 1 }}
-      className="absolute -top-1 -right-2 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-rose-deep px-1 text-[0.62rem] font-bold text-white"
+      className={`${inline ? 'ml-1 inline-flex align-text-top' : 'absolute -top-1 -right-2 flex'} h-4.5 min-w-4.5 items-center justify-center rounded-full bg-rose-deep px-1 text-[0.62rem] font-bold text-white`}
       aria-label={`${count} new`}
     >
       {count > 9 ? '9+' : count}
@@ -32,6 +45,15 @@ function Badge({ count }: { count: number }) {
 export function Layout({ children }: { children: ReactNode }) {
   const { api } = useApp()
   const { unread } = useChatStatus()
+  const { counts } = useTogether()
+  const badge = (to: string, inline = false) => {
+    if (to === '/chat') return <Badge count={unread} inline={inline} />
+    if (to === '/memories') return <Badge count={counts.memories} inline={inline} />
+    if (to === '/letters') return <Badge count={counts.letters} inline={inline} />
+    if (to === '/calendar') return <Badge count={counts.calendar} inline={inline} />
+    if (to === '/world' && (counts.doodles > 0 || counts.chessTurn)) return <Badge count={0} dot inline={inline} />
+    return null
+  }
   const { pathname } = useLocation()
   const inChat = pathname === '/chat'
 
@@ -56,10 +78,10 @@ export function Layout({ children }: { children: ReactNode }) {
       <header className="relative z-10 mx-auto flex w-full max-w-3xl shrink-0 items-center justify-between px-5 pt-5 pb-2">
         <Link to="/" className="flex items-center gap-2 text-peacock-deep" aria-label="Our Little Vrindavan — home">
           <Feather className="h-9 w-4" />
-          <span className="font-serif text-xl italic">Our Little Vrindavan</span>
+          <span className="font-serif text-xl italic sm:hidden md:inline">Our Little Vrindavan</span>
         </Link>
         {/* wider screens: navigation sits in the header */}
-        <nav aria-label="Main" className="hidden gap-0.5 sm:flex">
+        <nav aria-label="Main" className="ml-auto hidden gap-0.5 sm:flex">
           {DESTINATIONS.map(({ to, label, end }) => (
             <NavLink
               key={to}
@@ -82,13 +104,16 @@ export function Layout({ children }: { children: ReactNode }) {
                   )}
                   <span className="relative">
                     {label}
-                    {to === '/chat' && <Badge count={unread} />}
+                    {badge(to, true)}
                   </span>
                 </>
               )}
             </NavLink>
           ))}
         </nav>
+        <div className="ml-2 shrink-0">
+          <PartnerAvatar />
+        </div>
       </header>
 
       <main
@@ -130,7 +155,7 @@ export function Layout({ children }: { children: ReactNode }) {
                       )}
                       <span className="relative">
                         <Icon className="size-5" aria-hidden />
-                        {to === '/chat' && <Badge count={unread} />}
+                        {badge(to)}
                       </span>
                       <span className="relative">{label}</span>
                     </>

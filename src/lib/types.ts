@@ -8,6 +8,7 @@ export interface Profile {
   display_name: string | null
   /** false until this person has chosen their own password */
   own_password?: boolean
+  last_seen_at?: string | null
 }
 
 export interface Space {
@@ -208,20 +209,35 @@ export interface DoodleHandlers {
 }
 
 // ── live presence ──
-export type LiveRoomName = 'doodle' | 'chat' | 'chess'
+export type LiveRoomName = 'doodle' | 'chat' | 'chess' | 'site'
 
 export interface LiveHandlers {
   /** something the other person broadcast (cursor, typing, live stroke…) */
   onEvent?: (event: string, payload: Record<string, unknown>, from: string) => void
   /** who is in the room right now (user ids, including you) */
   onPresence?: (userIds: string[]) => void
+  /** what each person in the room shared about themselves (e.g. which page they are on) */
+  onPresenceState?: (states: Record<string, Record<string, unknown>>) => void
   /** connection state, for a gentle "reconnecting…" */
   onStatus?: (status: 'connecting' | 'live' | 'offline') => void
 }
 
 export interface LiveRoom {
   send: (event: string, payload: Record<string, unknown>) => void
+  /** share a little state with the other person (kept up to date while connected) */
+  track: (state: Record<string, unknown>) => void
   leave: () => void
+}
+
+export type Section = 'memories' | 'letters' | 'calendar' | 'world'
+
+/** New things the other person added since you last looked. */
+export interface UpdateCounts {
+  memories: number
+  letters: number
+  calendar: number
+  doodles: number
+  chessTurn: boolean
 }
 
 // ── chess ──

@@ -12,6 +12,7 @@ export function useLiveRoom(room: LiveRoomName, onEvent?: Handler) {
   const { api } = useApp()
   const world = useWorld()
   const [peers, setPeers] = useState<string[]>([])
+  const [states, setStates] = useState<Record<string, Record<string, unknown>>>({})
   const [status, setStatus] = useState<'connecting' | 'live' | 'offline'>('connecting')
   const handler = useRef(onEvent)
   handler.current = onEvent
@@ -21,6 +22,7 @@ export function useLiveRoom(room: LiveRoomName, onEvent?: Handler) {
     const joined = api.joinRoom(world.space.id, room, world.me.id, {
       onEvent: (event, payload, from) => handler.current?.(event, payload, from),
       onPresence: setPeers,
+      onPresenceState: setStates,
       onStatus: setStatus,
     })
     live.current = joined
@@ -34,7 +36,11 @@ export function useLiveRoom(room: LiveRoomName, onEvent?: Handler) {
     live.current?.send(event, payload)
   }, [])
 
-  return { send, partnerHere: peers.some((id) => id !== world.me.id), status }
+  const track = useCallback((state: Record<string, unknown>) => {
+    live.current?.track(state)
+  }, [])
+
+  return { send, track, states, partnerHere: peers.some((id) => id !== world.me.id), status }
 }
 
 /** Calls fn at most once per `ms`, always delivering the latest arguments. */
