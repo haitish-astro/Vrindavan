@@ -216,9 +216,9 @@ create policy "milestones: creator deletes" on public.timeline_milestones
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('memories', 'memories', false, 8388608, array['image/jpeg', 'image/webp', 'image/png'])
 on conflict (id) do update
-  set public             = false,
-      file_size_limit    = excluded.file_size_limit,
-      allowed_mime_types = excluded.allowed_mime_types;
+  -- Re-running this file keeps the bucket private but leaves its limits alone
+  -- (a later file widens them for videos).
+  set public = false;
 
 drop policy if exists "vrindavan photos: members read" on storage.objects;
 create policy "vrindavan photos: members read" on storage.objects
