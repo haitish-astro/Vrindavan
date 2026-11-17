@@ -75,7 +75,8 @@ export function Layout({ children }: { children: ReactNode }) {
         </p>
       )}
 
-      <header className="relative z-10 mx-auto flex w-full max-w-3xl shrink-0 items-center justify-between px-5 pt-5 pb-2">
+      {/* above the page (z-30) so the avatar menu is never hidden behind content */}
+      <header className="relative z-30 mx-auto flex w-full max-w-3xl shrink-0 items-center justify-between px-5 pt-5 pb-2">
         <Link to="/" className="flex items-center gap-2 text-peacock-deep" aria-label="Our Little Vrindavan — home">
           <Feather className="h-9 w-4" />
           <span className="font-serif text-xl italic sm:hidden md:inline">Our Little Vrindavan</span>
@@ -118,7 +119,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
       <main
         id="main"
-        className={`relative z-10 mx-auto w-full max-w-3xl px-5 pt-4 ${inChat ? 'flex min-h-0 flex-1 flex-col pb-3 sm:pb-6' : 'pb-32 sm:pb-16'}`}
+        className={`relative z-10 mx-auto w-full max-w-3xl px-5 pt-4 ${inChat ? 'flex min-h-0 flex-1 flex-col pb-3 sm:pb-6' : 'pb-[calc(8.5rem+env(safe-area-inset-bottom))] sm:pb-16'}`}
       >
         {/* keyed by page, so each page plays its own gentle entrance */}
         <div key={pathname} className={inChat ? 'flex min-h-0 flex-1 flex-col' : undefined}>

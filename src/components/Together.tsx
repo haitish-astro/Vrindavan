@@ -1,6 +1,6 @@
 /** Little signs that your love is here: their avatar, where they are, "join them". */
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 import { AnimatePresence, motion } from 'motion/react'
 import { nameOf, useWorld } from '../app/AppContext'
 import { placeOf, useTogether } from '../app/TogetherContext'
@@ -44,13 +44,21 @@ export function PartnerAvatar({ size = 'md' }: { size?: 'sm' | 'md' }) {
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLDivElement>(null)
 
+  const { pathname } = useLocation()
+  // the little menu closes on a tap outside, on Escape, and whenever the page changes
+  useEffect(() => setOpen(false), [pathname])
   useEffect(() => {
     if (!open) return
-    const close = (e: MouseEvent) => {
+    const close = (e: PointerEvent) => {
       if (box.current && !box.current.contains(e.target as Node)) setOpen(false)
     }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    document.addEventListener('pointerdown', close)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', close)
+      document.removeEventListener('keydown', onKey)
+    }
   }, [open])
 
   if (!partner || !line) return null
@@ -108,7 +116,7 @@ export function PartnerAvatar({ size = 'md' }: { size?: 'sm' | 'md' }) {
       </button>
 
       <AnimatePresence>
-        {(open || t.justArrived) && (
+        {open && (
           <motion.div
             initial={{ opacity: 0, y: -6, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -117,7 +125,8 @@ export function PartnerAvatar({ size = 'md' }: { size?: 'sm' | 'md' }) {
             role="status"
           >
             <p className="text-sm font-semibold text-ink">
-              {t.justArrived && !open ? `${name} just arrived ✨` : `${line.emoji} ${line.text}`}
+              {t.justArrived ? `✨ ${name} just arrived — ` : `${line.emoji} `}
+              {line.text}
             </p>
             {line.path && (
               <button

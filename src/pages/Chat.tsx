@@ -58,6 +58,18 @@ export default function Chat() {
   const [unsending, setUnsending] = useState<Shown | null>(null)
   const [viewing, setViewingPhoto] = useState<Shown | null>(null)
   const [hearted, setHearted] = useState<string | null>(null) // message that just got a double-tap heart
+  const [menuBelow, setMenuBelow] = useState(false)
+
+  // A tap anywhere else closes the little menu.
+  useEffect(() => {
+    if (!selected) return
+    const close = (e: PointerEvent) => {
+      const target = e.target as Element | null
+      if (!target?.closest?.(`[data-msg-id="${CSS.escape(selected)}"]`)) setSelected(null)
+    }
+    document.addEventListener('pointerdown', close)
+    return () => document.removeEventListener('pointerdown', close)
+  }, [selected])
   const [notice, setNotice] = useState<string | null>(null)
   const [partnerTyping, setPartnerTyping] = useState(false)
 
@@ -291,7 +303,12 @@ export default function Chat() {
   }
 
   /** Tap: show the little menu. Double-tap: send a heart. */
-  const tapBubble = (message: Shown) => {
+  const tapBubble = (message: Shown, bubble?: HTMLElement) => {
+    // near the top of the chat, the menu opens below the message so it isn't cut off
+    if (bubble && scroller.current) {
+      const top = bubble.getBoundingClientRect().top - scroller.current.getBoundingClientRect().top
+      setMenuBelow(top < 110)
+    }
     const now = Date.now()
     const last = lastTap.current
     if (last && last.id === message.id && now - last.at < 320) {
@@ -436,47 +453,64 @@ export default function Chat() {
                       </li>
                     )}
                     <motion.li
+                      data-msg-id={message.id}
+                      layout="position"
                       initial={animateIn ? { opacity: 0, y: 12, scale: 0.94 } : false}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
-                      transition={{ type: 'spring', stiffness: 420, damping: 30 }}
-                      className={`flex flex-col ${mine ? 'items-end' : 'items-start'} ${lastOfRun || reactions.length ? 'pb-2' : ''}`}
+                      transition={{ type: 'spring', stiffness: 420, damping: 30, layout: { duration: 0.22, ease: 'easeOut' } }}
+                      className={`relative flex flex-col ${mine ? 'items-end' : 'items-start'} ${
+                        lastOfRun ? 'pb-2' : reactions.length ? 'pb-4' : ''
+                      } ${isSelected ? 'z-20' : ''}`}
                     >
-                      {/* the little menu: reactions, time, unsend */}
-                      <AnimatePresence>
-                        {isSelected && !message.pending && (
-                          <motion.div
-                            initial={{ opacity: 0, y: 6, scale: 0.95 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: 4, scale: 0.95 }}
-                            className="mb-1 flex max-w-full flex-wrap items-center gap-0.5 rounded-full border border-gold/25 bg-paper px-1.5 py-1 shadow-polaroid"
-                            role="toolbar"
-                            aria-label="React to this message"
-                          >
-                            {MESSAGE_REACTIONS.map((emoji) => (
-                              <button
-                                key={emoji}
-                                type="button"
-                                onClick={() => {
-                                  setSelected(null)
-                                  void react(message, emoji)
-                                }}
-                                aria-pressed={myReaction === emoji}
-                                aria-label={`React ${emoji}`}
-                                className={`flex size-9 items-center justify-center rounded-full text-lg transition hover:scale-125 ${
-                                  myReaction === emoji ? 'bg-peacock-soft' : ''
-                                }`}
-                              >
-                                {emoji}
-                              </button>
-                            ))}
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-
                       <div className={`relative max-w-[82%] sm:max-w-[70%] ${mine ? 'ml-8' : 'mr-8'}`}>
+                        {/* the little menu floats over the chat — it never pushes messages around */}
+                        <AnimatePresence>
+                          {isSelected && !message.pending && (
+                            <motion.div
+                              initial={{ opacity: 0, y: menuBelow ? -6 : 6, scale: 0.95 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, scale: 0.95 }}
+                              transition={{ duration: 0.15 }}
+                              className={`absolute z-30 w-max max-w-[18rem] rounded-2xl border border-gold/25 bg-paper p-1 shadow-polaroid ${
+                                menuBelow ? 'top-full mt-2' : 'bottom-full mb-2'
+                              } ${mine ? 'right-0' : 'left-0'}`}
+                              role="toolbar"
+                              aria-label="React to this message"
+                            >
+                              <div className="flex flex-wrap items-center gap-0.5">
+                                {MESSAGE_REACTIONS.map((emoji) => (
+                                  <button
+                                    key={emoji}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelected(null)
+                                      void react(message, emoji)
+                                    }}
+                                    aria-pressed={myReaction === emoji}
+                                    aria-label={`React ${emoji}`}
+                                    className={`flex size-8 items-center justify-center rounded-full text-lg transition hover:scale-125 ${
+                                      myReaction === emoji ? 'bg-peacock-soft' : ''
+                                    }`}
+                                  >
+                                    {emoji}
+                                  </button>
+                                ))}
+                              </div>
+                              <div className="mt-1 flex items-center justify-between gap-3 border-t border-gold/15 px-2 pt-1 text-[0.7rem] text-ink-soft">
+                                <span>{formatTime(message.created_at)}</span>
+                                {mine && (
+                                  <button type="button" onClick={() => setUnsending(message)} className="font-semibold text-rose-deep">
+                                    Unsend
+                                  </button>
+                                )}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+
                         <button
                           type="button"
-                          onClick={() => tapBubble(message)}
+                          onClick={(e) => tapBubble(message, e.currentTarget)}
                           onDoubleClick={(e) => e.preventDefault()}
                           aria-expanded={isSelected}
                           aria-label={`${mine ? 'You' : partnerName}${message.image_path || imageSrc ? ', a photo' : ''}${message.body ? `: ${message.body}` : ''}. Tap for reactions, double-tap to heart.`}
@@ -484,14 +518,14 @@ export default function Chat() {
                             mine
                               ? `${lastOfRun ? 'rounded-br-md' : ''} rounded-3xl bg-peacock text-white ${message.pending === 'sending' ? 'opacity-80' : ''} ${message.pending === 'failed' ? '!bg-rose-deep' : ''}`
                               : `${lastOfRun ? 'rounded-bl-md' : ''} rounded-3xl border border-gold/20 bg-paper text-ink`
-                          }`}
+                          } ${isSelected ? 'ring-2 ring-gold/60' : ''}`}
                         >
                           {(message.image_path || imageSrc) && (
                             <span className="relative block w-64 max-w-full" style={{ aspectRatio: `1 / ${ratio}` }}>
                               {imageSrc ? (
                                 <img src={imageSrc} alt="" className="size-full object-cover" />
                               ) : (
-                                <PrivatePhoto path={thumbOf(message.image_path!)} alt="" className="size-full" />
+                                <PrivatePhoto path={thumbOf(message.image_path!)} fullPath={message.image_path} alt="" className="size-full" />
                               )}
                               {message.pending === 'sending' && (
                                 <span className="absolute inset-x-3 bottom-3 h-1.5 overflow-hidden rounded-full bg-white/40">
@@ -533,13 +567,13 @@ export default function Chat() {
                           )}
                         </AnimatePresence>
 
-                        {/* reactions */}
+                        {/* reactions sit on the bubble's edge */}
                         {reactions.length > 0 && (
                           <motion.span
                             initial={{ scale: 0 }}
                             animate={{ scale: 1 }}
                             transition={{ type: 'spring', stiffness: 500, damping: 18 }}
-                            className={`absolute -bottom-3 flex items-center gap-0.5 rounded-full border border-gold/30 bg-paper px-1.5 py-0.5 text-sm shadow-soft ${
+                            className={`absolute -bottom-4 z-10 flex items-center gap-0.5 rounded-full border border-gold/30 bg-paper px-1.5 py-0.5 text-sm leading-none shadow-soft ${
                               mine ? 'left-2' : 'right-2'
                             }`}
                             aria-label={reactions
@@ -564,15 +598,10 @@ export default function Chat() {
                           </button>
                         </span>
                       )}
-                      {(lastOfRun || isSelected) && !message.pending && (
-                        <span className={`flex items-center gap-2 px-2 text-[0.7rem] text-ink-soft ${reactions.length ? 'mt-3' : 'mt-1'}`}>
+                      {lastOfRun && !message.pending && (
+                        <span className={`flex items-center gap-2 px-2 text-[0.7rem] text-ink-soft ${reactions.length ? 'mt-5' : 'mt-1'}`}>
                           {formatTime(message.created_at)}
                           {mine && message.id === lastMine?.id && seenByThem && <span className="text-rose-deep">· Seen ♡</span>}
-                          {mine && isSelected && (
-                            <button type="button" onClick={() => setUnsending(message)} className="font-semibold text-rose-deep">
-                              Unsend
-                            </button>
-                          )}
                         </span>
                       )}
                     </motion.li>
