@@ -4,6 +4,8 @@ import { ArrowLeft, Check } from 'lucide-react'
 import { useApp, useWorld } from '../app/AppContext'
 import { friendlyError } from '../data/api'
 import { todayISO } from '../lib/dates'
+import { useAsync } from '../lib/hooks'
+import { motion } from 'motion/react'
 import { Button, Label, Page, PageHeader } from '../components/ui'
 
 /** Personalisation: names, the day we met, the greetings. */
@@ -120,6 +122,8 @@ export default function Settings() {
       </form>
 
       <PasswordCard />
+
+      <StorageCard />
     </Page>
   )
 }
@@ -208,5 +212,94 @@ function PasswordCard() {
         )}
       </div>
     </form>
+  )
+}
+
+/** Supabase's free plan includes 1 GB for photos and videos. */
+const FREE_STORAGE_BYTES = 1024 ** 3
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(2)} GB`
+  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(bytes >= 100 * 1024 ** 2 ? 0 : 1)} MB`
+  if (bytes === 0) return "0 MB"
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`
+}
+
+/** How much of the free photo & video storage your little world is using. */
+function StorageCard() {
+  const { api } = useApp()
+  const usage = useAsync(() => api.storageUsage(), [api])
+
+  if (usage.loading) return null
+  const data = usage.data
+  const total = data ? data.photoBytes + data.videoBytes : 0
+  const share = Math.min(1, total / FREE_STORAGE_BYTES)
+  const photoShare = data ? Math.min(1, data.photoBytes / FREE_STORAGE_BYTES) : 0
+  const videoShare = data ? Math.min(1 - photoShare, data.videoBytes / FREE_STORAGE_BYTES) : 0
+  const tone = share >= 0.95 ? 'full' : share >= 0.8 ? 'close' : 'ok'
+
+  return (
+    <section className="paper mt-6 space-y-3 p-5 sm:p-7" aria-label="Storage">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-2xl text-peacock-deep">Photo & video storage</h2>
+        {data && (
+          <p className="text-sm font-semibold text-ink">
+            {formatBytes(total)} <span className="font-normal text-ink-soft">of 1 GB</span>
+          </p>
+        )}
+      </div>
+
+      {!data ? (
+        <p className="text-sm text-ink-soft">
+          The storage meter appears once the newest SQL file has been run in Supabase (see the README).
+        </p>
+      ) : (
+        <>
+          <div
+            className="flex h-3 overflow-hidden rounded-full bg-parchment"
+            role="meter"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(share * 100)}
+            aria-label={`${Math.round(share * 100)}% of the free storage used`}
+          >
+            <motion.span
+              className="h-full bg-peacock"
+              initial={{ width: 0 }}
+              animate={{ width: `${photoShare * 100}%` }}
+              transition={{ duration: 0.8, ease: 'easeOut' }}
+            />
+            <motion.span
+              className="h-full bg-rose"
+              initial={{ width: 0 }}
+              animate={{ width: `${videoShare * 100}%` }}
+              transition={{ duration: 0.8, delay: 0.2, ease: 'easeOut' }}
+            />
+          </div>
+          <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-ink-soft">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="size-2.5 rounded-full bg-peacock" aria-hidden />
+              Photos · {data.photoFiles} · {formatBytes(data.photoBytes)}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="size-2.5 rounded-full bg-rose" aria-hidden />
+              Videos · {data.videoFiles} · {formatBytes(data.videoBytes)}
+            </span>
+            <span>{Math.round(share * 100)}% used</span>
+          </div>
+          <p
+            className={`rounded-xl px-3 py-2 text-sm ${
+              tone === 'full' ? 'bg-blush text-rose-deep' : tone === 'close' ? 'bg-gold-soft/60 text-ink' : 'text-ink-soft'
+            }`}
+          >
+            {tone === 'full'
+              ? 'Almost full — new uploads may soon be refused. Remove some videos, or move to Supabase Pro (100 GB).'
+              : tone === 'close'
+                ? 'Getting close to the free 1 GB. Videos take the most room — consider trimming long clips.'
+                : 'Plenty of room. This counts every photo and video either of you has added, including chat photos.'}
+          </p>
+        </>
+      )}
+    </section>
   )
 }

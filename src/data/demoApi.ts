@@ -107,8 +107,12 @@ export function createDemoApi(): Api {
   const chatSubs = new Set<ChatHandlers>()
   const doodleSubs = new Set<DoodleHandlers>()
   const files = new Map<string, string>()
+  const sizes = new Map<string, number>()
 
-  const store = (path: string, blob: Blob) => files.set(path, URL.createObjectURL(blob))
+  const store = (path: string, blob: Blob) => {
+    sizes.set(path, blob.size)
+    files.set(path, URL.createObjectURL(blob))
+  }
   const emit = () => listeners.forEach((l) => l(user))
   const find = (id: string) => memories.find((m) => m.id === id)
   const copyLetter = (l: Letter): Letter => ({ ...l, replies: [...l.replies], opens: [...l.opens] })
@@ -676,6 +680,19 @@ export function createDemoApi(): Api {
 
     // ── being together ──
     async touchLastSeen() {},
+    async storageUsage() {
+      let photoBytes = 0, videoBytes = 0, photoFiles = 0, videoFiles = 0
+      sizes.forEach((size, path) => {
+        if (/\.(mp4|mov|webm)$/i.test(path)) {
+          videoBytes += size
+          videoFiles++
+        } else {
+          photoBytes += size
+          if (!path.endsWith('_thumb.jpg')) photoFiles++
+        }
+      })
+      return { photoBytes, videoBytes, photoFiles, videoFiles }
+    },
     async markSeen(section) {
       seenAt[section] = now()
     },

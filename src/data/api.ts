@@ -146,6 +146,8 @@ export interface Api {
   // ── being together ──
   /** "I'm here" — updates last_seen_at for "last here 2 h ago". */
   touchLastSeen(): Promise<void>
+  /** Photo/video storage your space uses (null if the newer SQL has not been run yet). */
+  storageUsage(): Promise<{ photoBytes: number; videoBytes: number; photoFiles: number; videoFiles: number } | null>
   /** Record that you just looked at a part of the app. */
   markSeen(section: Section): Promise<void>
   /** New things your love added since you last looked at each part. */

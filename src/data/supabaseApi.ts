@@ -941,6 +941,22 @@ export async function createSupabaseApi(url: string, anonKey: string): Promise<A
     },
 
     // ── being together ──
+    async storageUsage() {
+      const { data, error } = await sb.rpc('space_storage_usage')
+      if (error) {
+        if (error.code !== 'PGRST202') console.error('Could not read storage use', error.message)
+        return null
+      }
+      const row = (Array.isArray(data) ? data[0] : data) as Record<string, number | string> | undefined
+      if (!row) return null
+      return {
+        photoBytes: Number(row.photo_bytes ?? 0),
+        videoBytes: Number(row.video_bytes ?? 0),
+        photoFiles: Number(row.photo_files ?? 0),
+        videoFiles: Number(row.video_files ?? 0),
+      }
+    },
+
     async touchLastSeen() {
       const { error } = await sb.rpc('touch_last_seen')
       if (error && error.code !== 'PGRST202') console.error('Could not update last seen', error.message)
