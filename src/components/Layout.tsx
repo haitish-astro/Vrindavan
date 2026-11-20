@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link, NavLink, useLocation } from 'react-router'
 import { motion } from 'motion/react'
-import { CalendarHeart, Flower2, House, Images, Mail, MessageCircleHeart, type LucideIcon } from 'lucide-react'
+import { CalendarHeart, Dices, Flower2, House, Images, Mail, MessageCircleHeart, type LucideIcon } from 'lucide-react'
 import { useApp } from '../app/AppContext'
 import { useChatStatus } from '../app/ChatContext'
 import { useTogether } from '../app/TogetherContext'
@@ -14,6 +14,7 @@ const DESTINATIONS: { to: string; label: string; icon: LucideIcon; end?: boolean
   { to: '/letters', label: 'Letters', icon: Mail },
   { to: '/chat', label: 'Chat', icon: MessageCircleHeart },
   { to: '/calendar', label: 'Calendar', icon: CalendarHeart },
+  { to: '/games', label: 'Games', icon: Dices },
   { to: '/world', label: 'Our World', icon: Flower2 },
 ]
 
@@ -51,7 +52,8 @@ export function Layout({ children }: { children: ReactNode }) {
     if (to === '/memories') return <Badge count={counts.memories} inline={inline} />
     if (to === '/letters') return <Badge count={counts.letters} inline={inline} />
     if (to === '/calendar') return <Badge count={counts.calendar} inline={inline} />
-    if (to === '/world' && (counts.doodles > 0 || counts.chessTurn)) return <Badge count={0} dot inline={inline} />
+    if (to === '/games') return <Badge count={counts.games} inline={inline} />
+    if (to === '/world' && counts.doodles > 0) return <Badge count={0} dot inline={inline} />
     return null
   }
   const { pathname } = useLocation()
@@ -89,7 +91,7 @@ export function Layout({ children }: { children: ReactNode }) {
               to={to}
               end={end}
               className={({ isActive }) =>
-                `relative rounded-full px-2.5 py-2 text-sm font-semibold whitespace-nowrap transition ${
+                `relative rounded-full px-2 py-2 text-sm font-semibold whitespace-nowrap transition ${
                   isActive ? 'text-peacock-deep' : 'text-ink-soft hover:text-peacock-deep'
                 }`
               }
@@ -140,7 +142,7 @@ export function Layout({ children }: { children: ReactNode }) {
                   to={to}
                   end={end}
                   className={({ isActive }) =>
-                    `relative flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-full text-[0.6rem] font-semibold whitespace-nowrap transition ${
+                    `relative flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-full text-[0.56rem] font-semibold whitespace-nowrap transition ${
                       isActive ? 'text-peacock-deep' : 'text-ink-soft'
                     }`
                   }

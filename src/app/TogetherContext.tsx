@@ -28,6 +28,12 @@ const PLACES: [string, Place][] = [
   ['/calendar', { doing: 'on the calendar', emoji: '📅', path: '/calendar' }],
   ['/doodle', { doing: 'drawing on the doodle board', emoji: '🎨', path: '/doodle' }],
   ['/chess', { doing: 'at the chess board', emoji: '♟️', path: '/chess' }],
+  ['/games/sea_battle', { doing: 'playing sea battle', emoji: '🚢', path: '/games/sea_battle' }],
+  ['/games/ludo', { doing: 'playing ludo', emoji: '🎲', path: '/games/ludo' }],
+  ['/games/snakes', { doing: 'playing snakes & ladders', emoji: '🐍', path: '/games/snakes' }],
+  ['/games/connect4', { doing: 'playing connect four', emoji: '🔴', path: '/games/connect4' }],
+  ['/games/quiz', { doing: 'playing "How well do you know me?"', emoji: '💭', path: '/games/quiz' }],
+  ['/games', { doing: 'in the games corner', emoji: '🎮', path: '/games' }],
   ['/story', { doing: 'reading our story', emoji: '📜', path: '/story' }],
   ['/settings', { doing: 'in Our Details', emoji: '🌿', path: '/settings' }],
   ['/world', { doing: 'wandering Our World', emoji: '🌸', path: '/world' }],
@@ -43,7 +49,7 @@ function sectionOf(path: string): Section | null {
   if (path.startsWith('/memories')) return 'memories'
   if (path.startsWith('/letters')) return 'letters'
   if (path.startsWith('/calendar')) return 'calendar'
-  if (path.startsWith('/world') || path.startsWith('/doodle') || path.startsWith('/chess')) return 'world'
+  if (path.startsWith('/world') || path.startsWith('/doodle')) return 'world'
   return null
 }
 
@@ -61,7 +67,7 @@ interface Together {
   counts: UpdateCounts
 }
 
-const EMPTY: UpdateCounts = { memories: 0, letters: 0, calendar: 0, doodles: 0, chessTurn: false }
+const EMPTY: UpdateCounts = { memories: 0, letters: 0, calendar: 0, doodles: 0, chessTurn: false, games: 0 }
 const TogetherContext = createContext<Together>({
   partnerOnline: false,
   partnerActive: false,

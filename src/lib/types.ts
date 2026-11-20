@@ -231,6 +231,26 @@ export interface LiveRoom {
 
 export type Section = 'memories' | 'letters' | 'calendar' | 'world'
 
+// ── games corner ──
+export type GameKind = 'sea_battle' | 'ludo' | 'snakes' | 'connect4' | 'quiz'
+export type GameStatus = 'setup' | 'active' | 'finished' | 'abandoned'
+
+export interface Game {
+  id: string
+  space_id: string
+  kind: GameKind
+  status: GameStatus
+  p1_id: string
+  p2_id: string
+  turn_id: string | null
+  winner_id: string | null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  state: Record<string, any>
+  version: number
+  created_at: string
+  updated_at: string
+}
+
 /** New things the other person added since you last looked. */
 export interface UpdateCounts {
   memories: number
@@ -238,6 +258,8 @@ export interface UpdateCounts {
   calendar: number
   doodles: number
   chessTurn: boolean
+  /** games waiting on you (your turn, your fleet to place, your quiz to answer) */
+  games: number
 }
 
 // ── chess ──

@@ -26,6 +26,8 @@ import { TogetherProvider } from './app/TogetherContext'
 import { CursorGlow } from './components/CursorGlow'
 import Chess from './pages/Chess'
 import Calendar from './pages/Calendar'
+import Games from './pages/Games'
+import GameRoom from './games/GameRoom'
 
 export default function App() {
   // undefined = starting up, null = Supabase is not configured
@@ -65,6 +67,8 @@ export default function App() {
               <Route path="doodle" element={<Doodle />} />
               <Route path="chess" element={<Chess />} />
               <Route path="calendar" element={<Calendar />} />
+              <Route path="games" element={<Games />} />
+              <Route path="games/:kind" element={<GameRoom />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

@@ -1,5 +1,7 @@
 import type { PreparedImage, PreparedMedia } from '../lib/images'
 import type {
+  Game,
+  GameKind,
   Section,
   UpdateCounts,
   CalendarEvent,
@@ -152,6 +154,22 @@ export interface Api {
   markSeen(section: Section): Promise<void>
   /** New things your love added since you last looked at each part. */
   countUpdates(spaceId: string, userId: string): Promise<UpdateCounts>
+
+  // ── games corner ──
+  /** The most recent games of every kind (not abandoned). */
+  listGames(spaceId: string): Promise<Game[]>
+  latestGame(spaceId: string, kind: GameKind): Promise<Game | null>
+  newGame(kind: GameKind, initial: Record<string, unknown>): Promise<void>
+  /** Ludo, snakes & ladders, connect four. */
+  gameMove(game: Game, state: Record<string, unknown>, nextTurn: string, outcome: 'continue' | 'win' | 'draw'): Promise<void>
+  gameResign(gameId: string): Promise<void>
+  seaPlace(gameId: string, ships: number[][]): Promise<void>
+  seaFire(gameId: string, version: number, cell: number): Promise<{ hit: boolean; sunk: boolean; won: boolean }>
+  quizPlay(gameId: string, answers: number[], guesses: number[]): Promise<void>
+  /** Your own hidden part of a game (your fleet, your quiz answers). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  mySecret(gameId: string): Promise<Record<string, any> | null>
+  subscribeGames(spaceId: string, onGame: (game: Game) => void): () => void
 
   // ── chess ──
   latestChessGame(spaceId: string): Promise<ChessGame | null>

@@ -7,6 +7,7 @@
  * production build (see loadApi in api.ts).
  */
 import type {
+  Game,
   MessageReaction,
   CalendarEvent,
   ScheduleBlock,
@@ -136,6 +137,8 @@ export function createDemoApi(): Api {
     | { kind: 'unstroke'; id: string }
     | { kind: 'chess'; data: ChessGame }
     | { kind: 'reaction'; data: MessageReaction }
+    | { kind: 'game'; data: Game }
+    | { kind: 'secret'; key: string; data: Record<string, any> }
     | { kind: 'unreaction'; id: string; messageId: string }
   const bus = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('vrindavan-preview') : null
   let otherWindowSeen = 0
@@ -166,6 +169,24 @@ export function createDemoApi(): Api {
   }
 
   let chessGame: ChessGame | null = null
+  let games: Game[] = []
+  const secrets = new Map<string, Record<string, any>>() // `${gameId}|${userId}`
+  const gameSubs = new Set<(game: Game) => void>()
+  const saveGame = (game: Game) => {
+    games = [...games.filter((g) => g.id !== game.id), game]
+    gameSubs.forEach((fn) => fn(game))
+    post({ kind: 'game', data: game })
+  }
+  const saveSecret = (gameId: string, userId: string, secret: Record<string, any>) => {
+    const key = `${gameId}|${userId}`
+    secrets.set(key, secret)
+    post({ kind: 'secret', key, data: secret })
+  }
+  const gameFor = (id: string) => {
+    const g = games.find((x) => x.id === id)
+    if (!g) throw new FriendlyError('Game not found.')
+    return g
+  }
   const chessSubs = new Set<(game: ChessGame) => void>()
 
   bus?.addEventListener('message', (event: MessageEvent<BusMessage>) => {
@@ -200,6 +221,11 @@ export function createDemoApi(): Api {
     } else if (m.kind === 'unstroke') {
       strokes = strokes.filter((x) => x.id !== m.id)
       doodleSubs.forEach((sub) => sub.onDelete?.(m.id))
+    } else if (m.kind === 'game') {
+      games = [...games.filter((g) => g.id !== m.data.id), m.data]
+      gameSubs.forEach((fn) => fn(m.data))
+    } else if (m.kind === 'secret') {
+      secrets.set(m.key, m.data)
     } else if (m.kind === 'reaction') {
       const target = messages.find((x) => x.id === m.data.message_id)
       if (target) target.reactions = [...(target.reactions ?? []).filter((r) => r.user_id !== m.data.user_id), m.data]
@@ -709,6 +735,140 @@ export function createDemoApi(): Api {
         chessTurn: Boolean(
           chessGame && chessGame.status === 'active' && (chessGame.moves.length % 2 === 0 ? chessGame.white_id : chessGame.black_id) === me.id,
         ),
+        games: games.filter((g) => {
+          if (g.status !== 'active' && g.status !== 'setup') return false
+          const key = g.p1_id === me.id ? 'p1' : 'p2'
+          return (
+            g.turn_id === me.id ||
+            (g.kind === 'sea_battle' && g.status === 'setup' && !g.state.ready?.[key]) ||
+            (g.kind === 'quiz' && g.status === 'active' && !g.state.submitted?.[key])
+          )
+        }).length,
+      }
+    },
+
+    // ── games corner (same rules as the database functions) ──
+    async listGames() {
+      await wait(120)
+      return games.filter((g) => g.status !== 'abandoned').sort((a, b) => b.created_at.localeCompare(a.created_at))
+    },
+    async latestGame(_spaceId, kind) {
+      await wait(120)
+      return games.filter((g) => g.kind === kind).sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null
+    },
+    async newGame(kind, initial) {
+      await wait()
+      games.filter((g) => g.kind === kind && (g.status === 'active' || g.status === 'setup')).forEach((g) => saveGame({ ...g, status: 'abandoned', turn_id: null }))
+      const first = Math.random() < 0.5 ? me.id : partner.id
+      saveGame({
+        id: crypto.randomUUID(),
+        space_id: space.id,
+        kind,
+        status: kind === 'sea_battle' ? 'setup' : 'active',
+        p1_id: me.id,
+        p2_id: partner.id,
+        turn_id: kind === 'sea_battle' || kind === 'quiz' ? null : first,
+        winner_id: null,
+        state: { ...initial, first },
+        version: 0,
+        created_at: now(),
+        updated_at: now(),
+      })
+    },
+    async gameMove(game, state, nextTurn, outcome) {
+      await wait(100)
+      const g = gameFor(game.id)
+      if (g.status !== 'active') throw new FriendlyError('This game has moved on — here is the latest.')
+      if (g.version !== game.version) throw new FriendlyError('The board changed — here is the latest.')
+      if (g.turn_id !== me.id) throw new FriendlyError('It is not your turn yet.')
+      saveGame({
+        ...g,
+        state,
+        version: g.version + 1,
+        turn_id: outcome === 'continue' ? nextTurn : null,
+        status: outcome === 'continue' ? 'active' : 'finished',
+        winner_id: outcome === 'win' ? me.id : null,
+        updated_at: now(),
+      })
+    },
+    async gameResign(gameId) {
+      await wait()
+      const g = gameFor(gameId)
+      saveGame({ ...g, status: 'finished', turn_id: null, winner_id: g.p1_id === me.id ? g.p2_id : g.p1_id, state: { ...g.state, resigned: me.id }, version: g.version + 1 })
+    },
+    async seaPlace(gameId, ships) {
+      await wait()
+      const g = gameFor(gameId)
+      if (g.status !== 'setup') throw new FriendlyError('The fleets are already placed.')
+      saveSecret(gameId, me.id, { ships })
+      const key = g.p1_id === me.id ? 'p1' : 'p2'
+      const state = { ...g.state, ready: { ...(g.state.ready ?? {}), [key]: true } }
+      const both = state.ready.p1 && state.ready.p2
+      saveGame({ ...g, state, status: both ? 'active' : 'setup', turn_id: both ? (g.state.first ?? g.p1_id) : null, version: g.version + 1 })
+    },
+    async seaFire(gameId, version, cell) {
+      await wait(120)
+      const g = gameFor(gameId)
+      if (g.status !== 'active') throw new FriendlyError('This game has moved on — here is the latest.')
+      if (g.version !== version) throw new FriendlyError('The board changed — here is the latest.')
+      if (g.turn_id !== me.id) throw new FriendlyError('It is not your turn yet.')
+      const key = g.p1_id === me.id ? 'p1' : 'p2'
+      const them = g.p1_id === me.id ? g.p2_id : g.p1_id
+      const shots: { c: number; h: boolean }[] = g.state.shots?.[key] ?? []
+      if (shots.some((x) => x.c === cell)) throw new FriendlyError('You already fired there.')
+      const fleet: number[][] = secrets.get(`${gameId}|${them}`)?.ships ?? []
+      const ship = fleet.find((sh) => sh.includes(cell))
+      const hit = Boolean(ship)
+      const sunk = Boolean(ship && ship.every((c) => c === cell || shots.some((x) => x.c === c && x.h)))
+      const nextShots = [...shots, { c: cell, h: hit }]
+      const won = nextShots.filter((x) => x.h).length >= 17
+      const state: Record<string, any> = {
+        ...g.state,
+        shots: { ...(g.state.shots ?? {}), [key]: nextShots },
+        last: { by: key, c: cell, h: hit, sunk },
+      }
+      if (sunk && ship) state.sunk = { ...(g.state.sunk ?? {}), [key]: [...(g.state.sunk?.[key] ?? []), ship] }
+      saveGame({ ...g, state, version: g.version + 1, turn_id: won ? null : them, status: won ? 'finished' : 'active', winner_id: won ? me.id : null })
+      return { hit, sunk, won }
+    },
+    async quizPlay(gameId, answers, guesses) {
+      await wait()
+      const g = gameFor(gameId)
+      if (g.status !== 'active') throw new FriendlyError('This game has moved on — here is the latest.')
+      if (secrets.has(`${gameId}|${me.id}`)) throw new FriendlyError('You already played this round.')
+      saveSecret(gameId, me.id, { answers, guesses })
+      const key = g.p1_id === me.id ? 'p1' : 'p2'
+      const them = g.p1_id === me.id ? g.p2_id : g.p1_id
+      const theirs = secrets.get(`${gameId}|${them}`)
+      if (!theirs) {
+        saveGame({ ...g, state: { ...g.state, submitted: { ...(g.state.submitted ?? {}), [key]: true } }, version: g.version + 1 })
+        return
+      }
+      const mine = { answers, guesses }
+      const p1s = key === 'p1' ? mine : theirs
+      const p2s = key === 'p1' ? theirs : mine
+      const score = (a: number[], b: number[]) => a.filter((x, i) => x === b[i]).length
+      const s1 = score(p1s.guesses, p2s.answers)
+      const s2 = score(p2s.guesses, p1s.answers)
+      saveGame({
+        ...g,
+        state: {
+          ...g.state,
+          submitted: { p1: true, p2: true },
+          reveal: { answers: { p1: p1s.answers, p2: p2s.answers }, guesses: { p1: p1s.guesses, p2: p2s.guesses }, scores: { p1: s1, p2: s2 } },
+        },
+        version: g.version + 1,
+        status: 'finished',
+        winner_id: s1 > s2 ? g.p1_id : s2 > s1 ? g.p2_id : null,
+      })
+    },
+    async mySecret(gameId) {
+      return secrets.get(`${gameId}|${me.id}`) ?? null
+    },
+    subscribeGames(_spaceId, onGame) {
+      gameSubs.add(onGame)
+      return () => {
+        gameSubs.delete(onGame)
       }
     },
 

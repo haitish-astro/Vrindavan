@@ -257,10 +257,10 @@ export default function Chess() {
     <Page>
       {celebrate && <HeartShower onDone={() => setCelebrate(false)} />}
       <Link
-        to="/world"
+        to="/games"
         className="mb-3 inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-ink-soft hover:text-peacock-deep"
       >
-        <ArrowLeft className="size-4" aria-hidden /> Our World
+        <ArrowLeft className="size-4" aria-hidden /> Games
       </Link>
       <header className="mb-4">
         <p className="eyebrow mb-1">Play together</p>

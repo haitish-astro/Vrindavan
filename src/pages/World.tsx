@@ -4,7 +4,6 @@ import { motion } from 'motion/react'
 import {
   ChevronRight,
   Video,
-  Crown,
   LogOut,
   Palette,
   ScrollText,
@@ -20,7 +19,6 @@ const PLACES: { to: string; title: string; text: string; icon: LucideIcon }[] = 
   { to: '/memories?tab=calls', title: 'FaceTime', text: 'The calls that kept us close.', icon: Video },
   { to: '/story', title: 'Our Story', text: 'The timeline of us, milestone by milestone.', icon: ScrollText },
   { to: '/doodle', title: 'Doodle Board', text: 'A shared sheet of paper — draw together, live.', icon: Palette },
-  { to: '/chess', title: 'Chess', text: 'A game for two — every move live on both screens.', icon: Crown },
   { to: '/letters?tab=notes', title: 'Little Notes', text: 'Everyday affection, in a few words.', icon: StickyNote },
   { to: '/settings', title: 'Our Details', text: 'Your nickname, your password, the day we met.', icon: SettingsIcon },
 ]

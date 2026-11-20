@@ -1,5 +1,6 @@
 import { createClient, type RealtimeChannel, type Session } from '@supabase/supabase-js'
 import type {
+  Game,
   MessageReaction,
   CalendarEvent,
   ScheduleBlock,
@@ -47,6 +48,19 @@ function sortMemory(memory: Memory): Memory {
   )
   memory.notes = memory.notes ?? []
   return memory
+}
+
+/** Game errors with a kind word for the common cases. */
+function gameError(error: { message: string; code?: string } | null, message: string): void {
+  if (!error) return
+  const m = error.message
+  if (m.startsWith('stale')) throw new FriendlyError('The board changed — here is the latest.')
+  if (m.includes('not your turn')) throw new FriendlyError('It is not your turn yet.')
+  if (m.includes('already over') || m.includes('not in battle')) throw new FriendlyError('This game has moved on — here is the latest.')
+  if (m.includes('already fired')) throw new FriendlyError('You already fired there.')
+  if (m.includes('already played')) throw new FriendlyError('You already played this round.')
+  if (m.includes('overlap') || m.includes('Invalid fleet')) throw new FriendlyError('That fleet is not allowed — try shuffling again.')
+  check(error, message)
 }
 
 /** Throws a generic, safe message; the technical detail goes to the console only. */
@@ -984,19 +998,121 @@ export async function createSupabaseApi(url: string, anonKey: string): Promise<A
         const { count: n, error } = await query
         return error ? 0 : (n ?? 0)
       }
-      const [memories, letters, notes, calendar, doodles, chess] = await Promise.all([
+      const waiting = sb
+        .from('games')
+        .select('kind, status, turn_id, state, p1_id')
+        .eq('space_id', spaceId)
+        .in('status', ['setup', 'active'])
+      const [memories, letters, notes, calendar, doodles, chess, games] = await Promise.all([
         count('memories', 'created_by', 'memories'),
         count('letters', 'author_id', 'letters', (q) => q.eq('status', 'sent'), 'sent_at'),
         count('quick_notes', 'author_id', 'letters'),
         count('calendar_events', 'created_by', 'calendar'),
         count('doodle_strokes', 'author_id', 'world'),
         sb.from('chess_games').select('white_id, black_id, moves, status').eq('space_id', spaceId).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+        waiting,
       ])
       const game = chess.error ? null : (chess.data as { white_id: string; black_id: string; moves: string[]; status: string } | null)
       const chessTurn = Boolean(
         game && game.status === 'active' && (game.moves.length % 2 === 0 ? game.white_id : game.black_id) === userId,
       )
-      return { memories, letters: letters + notes, calendar, doodles, chessTurn }
+      const myKey = (g: { p1_id: string }) => (g.p1_id === userId ? 'p1' : 'p2')
+      const waitingOnMe = games.error
+        ? 0
+        : ((games.data ?? []) as { kind: string; status: string; turn_id: string | null; state: Record<string, any>; p1_id: string }[]).filter(
+            (g) =>
+              g.turn_id === userId ||
+              (g.kind === 'sea_battle' && g.status === 'setup' && !g.state?.ready?.[myKey(g)]) ||
+              (g.kind === 'quiz' && g.status === 'active' && !g.state?.submitted?.[myKey(g)]),
+          ).length
+      return { memories, letters: letters + notes, calendar, doodles, chessTurn, games: waitingOnMe + (chessTurn ? 1 : 0) }
+    },
+
+    // ── games corner ──
+    async listGames(spaceId) {
+      const { data, error } = await sb
+        .from('games')
+        .select('*')
+        .eq('space_id', spaceId)
+        .neq('status', 'abandoned')
+        .order('created_at', { ascending: false })
+        .limit(40)
+      check(error, 'We could not load the games.')
+      return (data ?? []) as Game[]
+    },
+
+    async latestGame(spaceId, kind) {
+      const { data, error } = await sb
+        .from('games')
+        .select('*')
+        .eq('space_id', spaceId)
+        .eq('kind', kind)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      check(error, 'We could not load this game.')
+      return (data as Game | null) ?? null
+    },
+
+    async newGame(kind, initial) {
+      const { error } = await sb.rpc('game_new', { which: kind, initial })
+      if (error?.message.includes('not joined')) throw new FriendlyError('Your love has not joined yet — games need two.')
+      check(error, 'A new game could not be started.')
+    },
+
+    async gameMove(game, state, nextTurn, outcome) {
+      const { error } = await sb.rpc('game_move', {
+        gid: game.id,
+        expected_version: game.version,
+        new_state: state,
+        next_turn: nextTurn,
+        outcome,
+      })
+      gameError(error, 'That move could not be saved.')
+    },
+
+    async gameResign(gameId) {
+      const { error } = await sb.rpc('game_resign', { gid: gameId })
+      gameError(error, 'Could not resign this game.')
+    },
+
+    async seaPlace(gameId, ships) {
+      const { error } = await sb.rpc('sea_place', { gid: gameId, ships })
+      gameError(error, 'Your fleet could not be placed.')
+    },
+
+    async seaFire(gameId, version, cell) {
+      const { data, error } = await sb.rpc('sea_fire', { gid: gameId, expected_version: version, cell })
+      gameError(error, 'That shot could not be fired.')
+      return data as { hit: boolean; sunk: boolean; won: boolean }
+    },
+
+    async quizPlay(gameId, answers, guesses) {
+      const { error } = await sb.rpc('quiz_play', { gid: gameId, answers, guesses })
+      gameError(error, 'Your answers could not be saved.')
+    },
+
+    async mySecret(gameId) {
+      const userId = await requireUserId()
+      const { data, error } = await sb.from('game_secrets').select('secret').eq('game_id', gameId).eq('user_id', userId).maybeSingle()
+      if (error) return null
+      return (data?.secret as Record<string, unknown> | undefined) ?? null
+    },
+
+    subscribeGames(spaceId, onGame) {
+      const channel = sb
+        .channel(`games-db:${spaceId}:${crypto.randomUUID()}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'games', filter: `space_id=eq.${spaceId}` },
+          (payload) => {
+            if (payload.new && 'id' in payload.new) onGame(payload.new as Game)
+          },
+        )
+        .subscribe()
+      return () => {
+        void sb.removeChannel(channel)
+      }
     },
 
     // ── chess ──
