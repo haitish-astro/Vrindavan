@@ -8,7 +8,8 @@ export interface PreparedImage {
   height: number
 }
 
-const FULL_MAX = 2560
+// 2048 px still looks sharp full-screen on phones and laptops, at about a third less space than 2560
+const FULL_MAX = 2048
 const THUMB_MAX = 1024
 const MAX_INPUT_BYTES = 40 * 1024 * 1024
 
@@ -72,7 +73,7 @@ export async function prepareImage(file: File): Promise<PreparedImage> {
   }
   const source = await decode(file)
   try {
-    const full = await render(source, FULL_MAX, 0.88)
+    const full = await render(source, FULL_MAX, 0.86)
     const thumb = await render(source, THUMB_MAX, 0.84)
     return { full: full.blob, thumb: thumb.blob, width: full.width, height: full.height }
   } finally {
@@ -95,7 +96,11 @@ export interface PreparedVideo {
 
 export type PreparedMedia = PreparedImage | PreparedVideo
 
+/** what the storage bucket accepts per file */
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024
+/** anything bigger than this gets shrunk before uploading */
+const SHRINK_ABOVE_BYTES = 8 * 1024 * 1024
+const MAX_VIDEO_INPUT_BYTES = 2 * 1024 * 1024 * 1024
 const VIDEO_TYPES: Record<string, PreparedVideo['ext']> = {
   'video/mp4': 'mp4',
   'video/quicktime': 'mov',
@@ -116,7 +121,7 @@ export function isVideoFile(file: File): boolean {
 }
 
 /** Grab a frame for the cover and read the size and length. Gives up quietly after a few seconds. */
-function readVideo(file: File): Promise<{ poster: Blob | null; width: number | null; height: number | null; duration: number | null }> {
+function readVideo(file: Blob): Promise<{ poster: Blob | null; width: number | null; height: number | null; duration: number | null }> {
   return new Promise((resolve) => {
     const url = URL.createObjectURL(file)
     const video = document.createElement('video')
@@ -138,7 +143,19 @@ function readVideo(file: File): Promise<{ poster: Blob | null; width: number | n
       const duration = Number.isFinite(video.duration) ? video.duration : null
       video.currentTime = Math.min(0.5, (duration ?? 1) / 2)
     }
+    // 'seeked' can fire a moment before the frame is actually painted (a black cover),
+    // so wait for the browser to say the frame is ready — or a short pause where it can't.
     video.onseeked = () => {
+      let grabbed = false
+      const go = () => {
+        if (grabbed) return
+        grabbed = true
+        grab()
+      }
+      if ('requestVideoFrameCallback' in video) video.requestVideoFrameCallback(() => go())
+      setTimeout(go, 400)
+    }
+    const grab = () => {
       const width = video.videoWidth || null
       const height = video.videoHeight || null
       const duration = Number.isFinite(video.duration) ? video.duration : null
@@ -158,18 +175,42 @@ function readVideo(file: File): Promise<{ poster: Blob | null; width: number | n
   })
 }
 
-export async function prepareVideo(file: File): Promise<PreparedVideo> {
+/**
+ * Shrink the video on this device first (often 5–10× smaller), then upload.
+ * Small clips are kept as they are; if shrinking isn't possible here, the original is used when it fits.
+ */
+export async function prepareVideo(file: File, onProgress?: (fraction: number) => void): Promise<PreparedVideo> {
   const type = videoType(file)
   const ext = VIDEO_TYPES[type]
   if (!ext) throw new ImageError(`"${file.name}" is a video format we can't keep. Try MP4 or MOV.`)
-  if (file.size > MAX_VIDEO_BYTES) {
-    throw new ImageError(`"${file.name}" is over 50 MB. Try a shorter clip — about a minute or less.`)
+  if (file.size > MAX_VIDEO_INPUT_BYTES) {
+    throw new ImageError(`"${file.name}" is very large (over 2 GB). Try a shorter clip.`)
   }
-  const details = await readVideo(file)
-  return { video: file, type, ext, ...details }
+
+  let video: Blob = file
+  let outType = type
+  let outExt = ext
+  if (file.size > SHRINK_ABOVE_BYTES) {
+    const { shrinkVideo } = await import('./videoShrink')
+    const small = await shrinkVideo(file, onProgress)
+    if (small && small.size < file.size) {
+      video = small
+      outType = 'video/mp4'
+      outExt = 'mp4'
+    }
+  }
+  if (video.size > MAX_VIDEO_BYTES) {
+    throw new ImageError(
+      video === file
+        ? `"${file.name}" is over 50 MB and this browser can't shrink it. Try a shorter clip, or add it from a computer with Chrome.`
+        : `"${file.name}" is still over 50 MB after shrinking. Try a shorter clip — a few minutes at most.`,
+    )
+  }
+  const details = await readVideo(video)
+  return { video, type: outType, ext: outExt, ...details }
 }
 
-/** A photo or a video, ready to upload. */
-export function prepareMedia(file: File): Promise<PreparedMedia> {
-  return isVideoFile(file) ? prepareVideo(file) : prepareImage(file)
+/** A photo or a video, ready to upload. `onProgress` reports the shrinking of videos. */
+export function prepareMedia(file: File, onProgress?: (fraction: number) => void): Promise<PreparedMedia> {
+  return isVideoFile(file) ? prepareVideo(file, onProgress) : prepareImage(file)
 }

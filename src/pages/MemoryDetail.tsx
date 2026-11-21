@@ -8,7 +8,7 @@ import { nameOf, useApp, useWorld } from '../app/AppContext'
 import { friendlyError } from '../data/api'
 import { useAsync } from '../lib/hooks'
 import { formatLong } from '../lib/dates'
-import { uploadPhotos, type UploadStatus } from '../lib/uploads'
+import { uploadLabel, uploadPhotos, type UploadStatus } from '../lib/uploads'
 import type { Memory, MemoryNote, Photo } from '../lib/types'
 import { LotusDivider } from '../components/Decor'
 import { UploadProgress } from '../components/PhotoPicker'
@@ -213,7 +213,7 @@ export default function MemoryDetail() {
             </p>
           )}
           {upload ? (
-            <UploadProgress label={`Saving photo ${upload.current} of ${upload.total}…`} fraction={upload.fraction} />
+            <UploadProgress label={uploadLabel(upload)} fraction={upload.fraction} />
           ) : (
             <label className="flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-full border border-peacock/25 bg-paper px-5 text-[0.95rem] font-semibold text-peacock-deep transition hover:bg-peacock-soft/60 focus-within:ring-2 focus-within:ring-peacock">
               <Camera className="size-4" aria-hidden /> Add photos or videos

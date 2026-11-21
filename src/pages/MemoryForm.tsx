@@ -5,7 +5,7 @@ import { useApp, useWorld } from '../app/AppContext'
 import { friendlyError } from '../data/api'
 import { useAsync } from '../lib/hooks'
 import { todayISO } from '../lib/dates'
-import { uploadPhotos, type UploadStatus } from '../lib/uploads'
+import { uploadLabel, uploadPhotos, type UploadStatus } from '../lib/uploads'
 import type { MemoryInput } from '../lib/types'
 import { PhotoPicker, UploadProgress, type PickedPhoto } from '../components/PhotoPicker'
 import { Button, ErrorNote, Label, Page, PageHeader, Spinner } from '../components/ui'
@@ -183,7 +183,7 @@ export default function MemoryForm() {
             <p className="mb-1.5 text-sm font-semibold">{isCall ? 'Screenshots & recordings' : 'Photos & videos'}</p>
             <PhotoPicker photos={photos} onChange={setPhotos} label={isCall ? 'Add screenshots or recordings' : 'Add photos or videos'} />
             <p className="mt-1.5 text-xs text-ink-soft">
-              Photos are made lighter before uploading; videos up to 50 MB each. Everything stays private to the two of you.
+              Photos and videos are made lighter on your device before uploading. Everything stays private to the two of you.
             </p>
           </div>
         )}
@@ -287,7 +287,7 @@ export default function MemoryForm() {
           </p>
         )}
         {upload && upload.total > 0 && (
-          <UploadProgress label={`Saving photo ${upload.current} of ${upload.total}…`} fraction={upload.fraction} />
+          <UploadProgress label={uploadLabel(upload)} fraction={upload.fraction} />
         )}
 
         <Button type="submit" busy={busy} className="w-full">
