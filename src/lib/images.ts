@@ -99,7 +99,7 @@ export type PreparedMedia = PreparedImage | PreparedVideo
 /** what the storage bucket accepts per file */
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024
 /** anything bigger than this gets shrunk before uploading */
-const SHRINK_ABOVE_BYTES = 8 * 1024 * 1024
+const SHRINK_ABOVE_BYTES = 35 * 1024 * 1024
 const MAX_VIDEO_INPUT_BYTES = 2 * 1024 * 1024 * 1024
 const VIDEO_TYPES: Record<string, PreparedVideo['ext']> = {
   'video/mp4': 'mp4',
