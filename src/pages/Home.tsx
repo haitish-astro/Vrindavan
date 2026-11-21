@@ -20,6 +20,7 @@ import { countdown, upcoming } from '../lib/calendar'
 import { TogetherCard } from '../components/Together'
 import { useAsync } from '../lib/hooks'
 import { messageForToday } from '../lib/dailyMessages'
+import { gitaCitation, gitaVerseFor } from '../lib/gita'
 import { dayOfYear, daysBetween, formatLong, timeAgo, todayISO } from '../lib/dates'
 import type { Letter, Memory } from '../lib/types'
 import { LotusDivider } from '../components/Decor'
@@ -187,6 +188,11 @@ export default function Home() {
       <motion.section {...rise(step++)} className="px-3 text-center" aria-label="Today's thought">
         <p className="eyebrow mb-2">Today&rsquo;s thought</p>
         <p className="font-serif text-[1.4rem] leading-snug text-ink italic">{thought}</p>
+      </motion.section>
+
+      {/* a verse from the Gita, new every three days */}
+      <motion.section {...rise(step++)} aria-label="A verse from the Bhagavad Gita">
+        <GitaCard />
         <LotusDivider className="mt-5" />
       </motion.section>
 
@@ -402,5 +408,25 @@ function NoteExchange({
         </p>
       </form>
     </section>
+  )
+}
+
+/** A verse from the Bhagavad Gita, the same for both of you, changing every three days. */
+function GitaCard() {
+  const { verse, nextInDays } = useMemo(() => gitaVerseFor(), [])
+  return (
+    <figure className="paper relative mx-auto max-w-xl overflow-hidden px-5 py-6 text-center sm:px-8">
+      <span aria-hidden className="pointer-events-none absolute -top-5 -right-4 text-[5rem] leading-none text-gold/10 select-none">
+        ॐ
+      </span>
+      <p className="eyebrow mb-3">From the Bhagavad Gita</p>
+      {verse.sanskrit && <p className="mb-2 font-serif text-[0.95rem] text-peacock-deep/80 italic">{verse.sanskrit}</p>}
+      <blockquote className="font-serif text-[1.25rem] leading-snug text-ink">“{verse.meaning}”</blockquote>
+      <figcaption className="mt-3 text-xs font-semibold tracking-wide text-gold">— {gitaCitation(verse.ref)}</figcaption>
+      <p className="hand mt-4 text-[1.35rem] leading-snug text-rose-deep">{verse.note}</p>
+      <p className="mt-3 text-[0.7rem] text-ink-soft">
+        {nextInDays === 1 ? 'A new verse tomorrow' : `A new verse in ${nextInDays} days`}
+      </p>
+    </figure>
   )
 }
