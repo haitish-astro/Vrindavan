@@ -39,6 +39,7 @@ Run the files in `supabase/migrations/` **in order** — paste each into a new q
 8. `20261118000800_week_one_off.sql` (one-off times in Our week)
 9. `20261119000900_storage_usage.sql` (the storage meter in Our Details)
 10. `20261119001000_games.sql` (the Games corner: Sea Battle, Ludo, Snakes & Ladders, Connect Four, the quiz)
+11. `20261123001100_pictionary.sql` (Pictionary in the Games corner)
 
 All are safe to run more than once. (If your Supabase project is linked to this GitHub repo
 and already applied them, you will see `memories` in the Table Editor — running them again

@@ -32,6 +32,7 @@ const PLACES: [string, Place][] = [
   ['/games/ludo', { doing: 'playing ludo', emoji: '🎲', path: '/games/ludo' }],
   ['/games/snakes', { doing: 'playing snakes & ladders', emoji: '🐍', path: '/games/snakes' }],
   ['/games/connect4', { doing: 'playing connect four', emoji: '🔴', path: '/games/connect4' }],
+  ['/games/pictionary', { doing: 'playing pictionary', emoji: '🎨', path: '/games/pictionary' }],
   ['/games/quiz', { doing: 'playing "How well do you know me?"', emoji: '💭', path: '/games/quiz' }],
   ['/games', { doing: 'in the games corner', emoji: '🎮', path: '/games' }],
   ['/story', { doing: 'reading our story', emoji: '📜', path: '/story' }],

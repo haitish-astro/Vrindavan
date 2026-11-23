@@ -1,6 +1,9 @@
 import { createClient, type RealtimeChannel, type Session } from '@supabase/supabase-js'
 import type {
   Game,
+  PictGuessResult,
+  PictStroke,
+  PictWord,
   MessageReaction,
   CalendarEvent,
   ScheduleBlock,
@@ -54,7 +57,11 @@ function sortMemory(memory: Memory): Memory {
 function gameError(error: { message: string; code?: string } | null, message: string): void {
   if (!error) return
   const m = error.message
+  if (m.includes('the round moved on')) throw new FriendlyError('The round moved on — here is the latest.')
   if (m.startsWith('stale')) throw new FriendlyError('The board changed — here is the latest.')
+  for (const kind of ['You are the one drawing', 'a lot of guesses', 'No more hints', 'Pick a word', 'already started guessing', 'The word is missing', 'not your turn to draw']) {
+    if (m.includes(kind)) throw new FriendlyError(m.replace(/^stale: /, '').replace(/[.!]?$/, (end) => end || '.'))
+  }
   if (m.includes('not your turn')) throw new FriendlyError('It is not your turn yet.')
   if (m.includes('already over') || m.includes('not in battle')) throw new FriendlyError('This game has moved on — here is the latest.')
   if (m.includes('already fired')) throw new FriendlyError('You already fired there.')
@@ -1113,6 +1120,109 @@ export async function createSupabaseApi(url: string, anonKey: string): Promise<A
       return () => {
         void sb.removeChannel(channel)
       }
+    },
+
+    // ── pictionary ──
+    async pictNew(rounds) {
+      const { error } = await sb.rpc('pict_new', { rounds })
+      if (error?.message.includes('not joined')) throw new FriendlyError('Your love has not joined yet — games need two.')
+      check(error, 'A new game could not be started.')
+    },
+
+    async pictChoose(gameId, word) {
+      const { error } = await sb.rpc('pict_choose', { gid: gameId, word })
+      gameError(error, 'That word could not be picked.')
+    },
+
+    async pictRechoose(gameId) {
+      const { error } = await sb.rpc('pict_rechoose', { gid: gameId })
+      gameError(error, 'Could not change the word.')
+    },
+
+    async pictGuess(gameId, guess) {
+      const { data, error } = await sb.rpc('pict_guess', { gid: gameId, guess })
+      gameError(error, 'That guess could not be sent.')
+      return data as PictGuessResult
+    },
+
+    async pictHint(gameId) {
+      const { error } = await sb.rpc('pict_hint', { gid: gameId })
+      gameError(error, 'No hint this time.')
+    },
+
+    async pictGiveUp(gameId) {
+      const { data, error } = await sb.rpc('pict_give_up', { gid: gameId })
+      gameError(error, 'Could not give up on this word.')
+      return (data as string | null) ?? ''
+    },
+
+    async pictStrokes(gameId) {
+      const { data, error } = await sb
+        .from('pict_strokes')
+        .select('*')
+        .eq('game_id', gameId)
+        .order('created_at', { ascending: true })
+        .limit(5000)
+      check(error, 'We could not load the drawing.')
+      return (data ?? []) as PictStroke[]
+    },
+
+    async pictAddStroke(gameId, round, stroke) {
+      const userId = await requireUserId()
+      const { data, error } = await sb
+        .from('pict_strokes')
+        .insert({ ...stroke, game_id: gameId, round, author_id: userId })
+        .select('*')
+        .single()
+      if (error?.code === '42501') throw new FriendlyError('This round has finished, so that line was not saved.')
+      check(error, 'That line could not be saved.')
+      return data as PictStroke
+    },
+
+    async pictDeleteStroke(id) {
+      const { error } = await sb.from('pict_strokes').delete().eq('id', id)
+      check(error, 'That line could not be undone.')
+    },
+
+    subscribePictStrokes(gameId, handlers) {
+      const channel = sb
+        .channel(`pict-db:${gameId}:${crypto.randomUUID()}`)
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'pict_strokes', filter: `game_id=eq.${gameId}` },
+          (payload) => handlers.onStroke?.(payload.new as PictStroke),
+        )
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'pict_strokes' }, (payload) => {
+          const id = (payload.old as { id?: string }).id
+          if (id) handlers.onDelete?.(id)
+        })
+        .subscribe()
+      return () => {
+        void sb.removeChannel(channel)
+      }
+    },
+
+    async pictWords(spaceId) {
+      const { data, error } = await sb.from('pict_words').select('*').eq('space_id', spaceId).order('created_at', { ascending: true })
+      check(error, 'We could not load your words.')
+      return (data ?? []) as PictWord[]
+    },
+
+    async pictAddWord(spaceId, word) {
+      const userId = await requireUserId()
+      const { data, error } = await sb
+        .from('pict_words')
+        .insert({ space_id: spaceId, word: word.trim().replace(/\s+/g, ' '), added_by: userId })
+        .select('*')
+        .single()
+      if (error?.code === '23505') throw new FriendlyError('That word is already on your list.')
+      check(error, 'That word could not be added.')
+      return data as PictWord
+    },
+
+    async pictRemoveWord(id) {
+      const { error } = await sb.from('pict_words').delete().eq('id', id)
+      check(error, 'That word could not be removed.')
     },
 
     // ── chess ──

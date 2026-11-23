@@ -13,6 +13,11 @@ import type {
   LiveHandlers,
   LiveRoom,
   LiveRoomName,
+  PictGuessResult,
+  PictStroke,
+  PictStrokeHandlers,
+  PictStrokeInput,
+  PictWord,
   ChatHandlers,
   ChatMessage,
   ChatRead,
@@ -170,6 +175,25 @@ export interface Api {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   mySecret(gameId: string): Promise<Record<string, any> | null>
   subscribeGames(spaceId: string, onGame: (game: Game) => void): () => void
+
+  // ── pictionary ──
+  /** Start a match of this many rounds (you take turns drawing). */
+  pictNew(rounds: number): Promise<void>
+  /** The drawer picks the word; only its letter pattern is shared. */
+  pictChoose(gameId: string, word: string): Promise<void>
+  /** The drawer changes their mind before any guesses (wipes this round's drawing). */
+  pictRechoose(gameId: string): Promise<void>
+  pictGuess(gameId: string, guess: string): Promise<PictGuessResult>
+  pictHint(gameId: string): Promise<void>
+  /** Gives up on this word; returns the word. */
+  pictGiveUp(gameId: string): Promise<string>
+  pictStrokes(gameId: string): Promise<PictStroke[]>
+  pictAddStroke(gameId: string, round: number, stroke: PictStrokeInput): Promise<PictStroke>
+  pictDeleteStroke(id: string): Promise<void>
+  subscribePictStrokes(gameId: string, handlers: PictStrokeHandlers): () => void
+  pictWords(spaceId: string): Promise<PictWord[]>
+  pictAddWord(spaceId: string, word: string): Promise<PictWord>
+  pictRemoveWord(id: string): Promise<void>
 
   // ── chess ──
   latestChessGame(spaceId: string): Promise<ChessGame | null>

@@ -6,8 +6,12 @@
  * everything disappears on reload. This file is never included in a
  * production build (see loadApi in api.ts).
  */
+import { drawerPoints, guesserPoints, pictIsRight, pictMask } from '../lib/pictionary'
 import type {
   Game,
+  PictStroke,
+  PictStrokeHandlers,
+  PictWord,
   MessageReaction,
   CalendarEvent,
   ScheduleBlock,
@@ -139,6 +143,10 @@ export function createDemoApi(): Api {
     | { kind: 'reaction'; data: MessageReaction }
     | { kind: 'game'; data: Game }
     | { kind: 'secret'; key: string; data: Record<string, any> }
+    | { kind: 'pstroke'; data: PictStroke }
+    | { kind: 'unpstroke'; id: string }
+    | { kind: 'pword'; data: PictWord }
+    | { kind: 'unpword'; id: string }
     | { kind: 'unreaction'; id: string; messageId: string }
   const bus = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('vrindavan-preview') : null
   let otherWindowSeen = 0
@@ -187,7 +195,53 @@ export function createDemoApi(): Api {
     if (!g) throw new FriendlyError('Game not found.')
     return g
   }
+  const pictLoad = (gameId: string, phase: string, role: 'drawer' | 'guesser') => {
+    const g = gameFor(gameId)
+    if (g.kind !== 'pictionary') throw new FriendlyError('Game not found.')
+    if (g.status !== 'active') throw new FriendlyError('This game has moved on — here is the latest.')
+    if (g.state.phase !== phase) throw new FriendlyError('The round moved on — here is the latest.')
+    const drawerId = g.state.drawer === 'p1' ? g.p1_id : g.p2_id
+    if (role === 'drawer' && drawerId !== me.id) throw new FriendlyError('It is not your turn to draw.')
+    if (role === 'guesser' && drawerId === me.id) throw new FriendlyError('You are the one drawing this round.')
+    return g
+  }
+  const pictWord = (g: Game): string => {
+    const drawerId = g.state.drawer === 'p1' ? g.p1_id : g.p2_id
+    const secret = secrets.get(`${g.id}|${drawerId}`)
+    if (!secret || secret.round !== g.state.round) throw new FriendlyError('The word is missing — ask them to pick again.')
+    return secret.word as string
+  }
+  const pictNext = (g: Game, word: string, gp: number, dp: number, how: 'guessed' | 'gave_up') => {
+    const drawer: 'p1' | 'p2' = g.state.drawer
+    const guesser: 'p1' | 'p2' = drawer === 'p1' ? 'p2' : 'p1'
+    const scores = { ...g.state.scores, [drawer]: (g.state.scores?.[drawer] ?? 0) + dp, [guesser]: (g.state.scores?.[guesser] ?? 0) + gp }
+    const entry = { round: g.state.round, drawer, word, how, wrong: (g.state.guesses ?? []).length, hints: g.state.hints ?? 0, guesser_points: gp, drawer_points: dp }
+    const state = { ...g.state, scores, history: [...(g.state.history ?? []), entry], last: { round: g.state.round, word, how, guesser_points: gp, drawer_points: dp } }
+    if (g.state.round >= g.state.rounds) {
+      saveGame({
+        ...g,
+        state: { ...state, phase: 'done', mask: null, guesses: [], shown: [] },
+        status: 'finished',
+        turn_id: null,
+        winner_id: scores.p1 > scores.p2 ? g.p1_id : scores.p2 > scores.p1 ? g.p2_id : null,
+        version: g.version + 1,
+        updated_at: now(),
+      })
+    } else {
+      saveGame({
+        ...g,
+        state: { ...state, round: g.state.round + 1, drawer: guesser, phase: 'choosing', mask: null, guesses: [], shown: [], hints: 0 },
+        turn_id: guesser === 'p1' ? g.p1_id : g.p2_id,
+        version: g.version + 1,
+        updated_at: now(),
+      })
+    }
+  }
   const chessSubs = new Set<(game: ChessGame) => void>()
+  let pictStrokes: PictStroke[] = []
+  let pictWords: PictWord[] = []
+  const pictSubs = new Map<string, Set<PictStrokeHandlers>>() // by game id
+  const pictEmit = (gameId: string, fn: (h: PictStrokeHandlers) => void) => pictSubs.get(gameId)?.forEach(fn)
 
   bus?.addEventListener('message', (event: MessageEvent<BusMessage>) => {
     const m = event.data
@@ -226,6 +280,17 @@ export function createDemoApi(): Api {
       gameSubs.forEach((fn) => fn(m.data))
     } else if (m.kind === 'secret') {
       secrets.set(m.key, m.data)
+    } else if (m.kind === 'pstroke') {
+      if (!pictStrokes.some((x) => x.id === m.data.id)) pictStrokes.push(m.data)
+      pictEmit(m.data.game_id, (h) => h.onStroke?.(m.data))
+    } else if (m.kind === 'unpstroke') {
+      const gone = pictStrokes.find((x) => x.id === m.id)
+      pictStrokes = pictStrokes.filter((x) => x.id !== m.id)
+      if (gone) pictEmit(gone.game_id, (h) => h.onDelete?.(m.id))
+    } else if (m.kind === 'pword') {
+      if (!pictWords.some((x) => x.id === m.data.id)) pictWords.push(m.data)
+    } else if (m.kind === 'unpword') {
+      pictWords = pictWords.filter((x) => x.id !== m.id)
     } else if (m.kind === 'reaction') {
       const target = messages.find((x) => x.id === m.data.message_id)
       if (target) target.reactions = [...(target.reactions ?? []).filter((r) => r.user_id !== m.data.user_id), m.data]
@@ -870,6 +935,145 @@ export function createDemoApi(): Api {
       return () => {
         gameSubs.delete(onGame)
       }
+    },
+
+    // ── pictionary (same rules as the database functions) ──
+    async pictNew(rounds) {
+      await wait()
+      if (rounds < 2 || rounds > 20) throw new FriendlyError('Invalid game.')
+      games.filter((g) => g.kind === 'pictionary' && (g.status === 'active' || g.status === 'setup')).forEach((g) => saveGame({ ...g, status: 'abandoned', turn_id: null }))
+      const first = Math.random() < 0.5 ? me.id : partner.id
+      saveGame({
+        id: crypto.randomUUID(),
+        space_id: space.id,
+        kind: 'pictionary',
+        status: 'active',
+        p1_id: me.id,
+        p2_id: partner.id,
+        turn_id: first,
+        winner_id: null,
+        state: {
+          rounds, round: 1, phase: 'choosing', drawer: first === me.id ? 'p1' : 'p2', first,
+          scores: { p1: 0, p2: 0 }, history: [], guesses: [], shown: [], hints: 0, mask: null,
+        },
+        version: 0,
+        created_at: now(),
+        updated_at: now(),
+      })
+    },
+    async pictChoose(gameId, word) {
+      await wait(100)
+      const g = pictLoad(gameId, 'choosing', 'drawer')
+      const w = word.replace(/\s+/g, ' ').trim()
+      if (w.length < 1 || w.length > 40 || !/[\p{L}\p{N}]/u.test(w)) throw new FriendlyError('Pick a word of 1 to 40 letters.')
+      saveSecret(gameId, me.id, { round: g.state.round, word: w })
+      saveGame({
+        ...g,
+        state: { ...g.state, phase: 'drawing', mask: pictMask(w, []), shown: [], guesses: [], hints: 0, started_at: now() },
+        turn_id: g.p1_id === me.id ? g.p2_id : g.p1_id,
+        version: g.version + 1,
+        updated_at: now(),
+      })
+    },
+    async pictRechoose(gameId) {
+      await wait(100)
+      const g = pictLoad(gameId, 'drawing', 'drawer')
+      if ((g.state.guesses ?? []).length > 0 || (g.state.hints ?? 0) > 0) throw new FriendlyError('They have already started guessing this one.')
+      pictStrokes.filter((x) => x.game_id === gameId && x.round === g.state.round).forEach((x) => {
+        pictStrokes = pictStrokes.filter((y) => y.id !== x.id)
+        pictEmit(gameId, (h) => h.onDelete?.(x.id))
+        post({ kind: 'unpstroke', id: x.id })
+      })
+      saveGame({ ...g, state: { ...g.state, phase: 'choosing', mask: null, shown: [] }, turn_id: me.id, version: g.version + 1, updated_at: now() })
+    },
+    async pictGuess(gameId, guess) {
+      await wait(120)
+      const g = pictLoad(gameId, 'drawing', 'guesser')
+      const t = guess.replace(/\s+/g, ' ').trim()
+      if (t.length < 1 || t.length > 60) throw new FriendlyError('Type a guess (up to 60 letters).')
+      const wrong = (g.state.guesses ?? []).length
+      if (wrong >= 30) throw new FriendlyError('That is a lot of guesses! Ask for a hint or give up on this one.')
+      const w = pictWord(g)
+      if (pictIsRight(t, w)) {
+        const gp = guesserPoints(wrong, g.state.hints ?? 0)
+        const dp = drawerPoints(gp)
+        pictNext(g, w, gp, dp, 'guessed')
+        return { right: true, word: w, points: gp, drawer_points: dp }
+      }
+      saveGame({ ...g, state: { ...g.state, guesses: [...(g.state.guesses ?? []), t] }, version: g.version + 1, updated_at: now() })
+      return { right: false }
+    },
+    async pictHint(gameId) {
+      await wait(100)
+      const g = pictLoad(gameId, 'drawing', 'guesser')
+      if ((g.state.hints ?? 0) >= 3) throw new FriendlyError('No more hints for this one.')
+      const w = pictWord(g)
+      const shown: number[] = g.state.shown ?? []
+      const hidden = [...w].map((_ch, i) => i + 1).filter((i) => /[\p{L}\p{N}]/u.test(w[i - 1]!) && !shown.includes(i))
+      if (hidden.length <= 1) throw new FriendlyError('No more hints for this one.')
+      const next = [...shown, hidden[Math.floor(Math.random() * hidden.length)]!]
+      saveGame({ ...g, state: { ...g.state, shown: next, mask: pictMask(w, next), hints: (g.state.hints ?? 0) + 1 }, version: g.version + 1, updated_at: now() })
+    },
+    async pictGiveUp(gameId) {
+      await wait(100)
+      const g = pictLoad(gameId, 'drawing', 'guesser')
+      const w = pictWord(g)
+      pictNext(g, w, 0, 0, 'gave_up')
+      return w
+    },
+    async pictStrokes(gameId) {
+      await wait(100)
+      return pictStrokes.filter((x) => x.game_id === gameId).sort((a, b) => a.created_at.localeCompare(b.created_at))
+    },
+    async pictAddStroke(gameId, round, stroke) {
+      await wait(60)
+      const g = gameFor(gameId)
+      const drawerId = g.state.drawer === 'p1' ? g.p1_id : g.p2_id
+      if (g.status !== 'active' || g.state.phase !== 'drawing' || g.state.round !== round || drawerId !== me.id) {
+        throw new FriendlyError('This round has finished, so that line was not saved.')
+      }
+      const saved: PictStroke = { ...stroke, id: crypto.randomUUID(), game_id: gameId, round, author_id: me.id, created_at: now() }
+      pictStrokes.push(saved)
+      pictEmit(gameId, (h) => h.onStroke?.(saved))
+      post({ kind: 'pstroke', data: saved })
+      return saved
+    },
+    async pictDeleteStroke(id) {
+      await wait(60)
+      const target = pictStrokes.find((x) => x.id === id)
+      if (!target || target.author_id !== me.id) return
+      const g = gameFor(target.game_id)
+      if (g.status !== 'active' || g.state.phase !== 'drawing' || g.state.round !== target.round) return
+      pictStrokes = pictStrokes.filter((x) => x.id !== id)
+      pictEmit(target.game_id, (h) => h.onDelete?.(id))
+      post({ kind: 'unpstroke', id })
+    },
+    subscribePictStrokes(gameId, handlers) {
+      const set = pictSubs.get(gameId) ?? new Set()
+      set.add(handlers)
+      pictSubs.set(gameId, set)
+      return () => {
+        set.delete(handlers)
+      }
+    },
+    async pictWords() {
+      await wait(80)
+      return [...pictWords]
+    },
+    async pictAddWord(_spaceId, word) {
+      await wait(80)
+      const w = word.trim().replace(/\s+/g, ' ')
+      if (w.length < 1 || w.length > 40 || !/[\p{L}\p{N}]/u.test(w)) throw new FriendlyError('Words can be 1 to 40 letters.')
+      if (pictWords.some((x) => x.word.toLowerCase() === w.toLowerCase())) throw new FriendlyError('That word is already on your list.')
+      const saved: PictWord = { id: crypto.randomUUID(), space_id: space.id, word: w, added_by: me.id, created_at: now() }
+      pictWords.push(saved)
+      post({ kind: 'pword', data: saved })
+      return saved
+    },
+    async pictRemoveWord(id) {
+      await wait(80)
+      pictWords = pictWords.filter((x) => x.id !== id)
+      post({ kind: 'unpword', id })
     },
 
     // ── chess ──

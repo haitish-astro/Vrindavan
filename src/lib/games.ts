@@ -8,6 +8,7 @@ export const GAME_INFO: Record<GameKind | 'chess', { title: string; emoji: strin
   snakes: { title: 'Snakes & Ladders', emoji: '🐍', blurb: 'Climb up, slide down, reach 100.', path: '/games/snakes' },
   connect4: { title: 'Connect Four', emoji: '🔴', blurb: 'Four in a row wins.', path: '/games/connect4' },
   quiz: { title: 'How well do you know me?', emoji: '💭', blurb: 'Answer about you, guess about them.', path: '/games/quiz' },
+  pictionary: { title: 'Pictionary', emoji: '🎨', blurb: 'One draws, one guesses — live or later.', path: '/games/pictionary' },
 }
 
 /** A fair die roll (1–6) using the browser's secure random numbers. */

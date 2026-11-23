@@ -209,7 +209,7 @@ export interface DoodleHandlers {
 }
 
 // ── live presence ──
-export type LiveRoomName = 'doodle' | 'chat' | 'chess' | 'site'
+export type LiveRoomName = 'doodle' | 'chat' | 'chess' | 'site' | 'pictionary'
 
 export interface LiveHandlers {
   /** something the other person broadcast (cursor, typing, live stroke…) */
@@ -232,7 +232,7 @@ export interface LiveRoom {
 export type Section = 'memories' | 'letters' | 'calendar' | 'world'
 
 // ── games corner ──
-export type GameKind = 'sea_battle' | 'ludo' | 'snakes' | 'connect4' | 'quiz'
+export type GameKind = 'sea_battle' | 'ludo' | 'snakes' | 'connect4' | 'quiz' | 'pictionary'
 export type GameStatus = 'setup' | 'active' | 'finished' | 'abandoned'
 
 export interface Game {
@@ -328,3 +328,38 @@ export type ScheduleBlockInput = Pick<ScheduleBlock, 'label' | 'weekday' | 'star
 }
 
 export type SpaceSettings = Pick<Space, 'first_met_on' | 'welcome_greeting' | 'featured_message'>
+
+// ── pictionary ──
+export interface PictStroke {
+  id: string
+  game_id: string
+  round: number
+  author_id: string
+  color: string
+  width: number
+  /** [x1, y1, x2, y2, …], each between 0 and 1 */
+  points: number[]
+  created_at: string
+}
+
+export type PictStrokeInput = Pick<PictStroke, 'color' | 'width' | 'points'>
+
+export interface PictStrokeHandlers {
+  onStroke?: (stroke: PictStroke) => void
+  onDelete?: (id: string) => void
+}
+
+export interface PictWord {
+  id: string
+  space_id: string
+  word: string
+  added_by: string
+  created_at: string
+}
+
+export interface PictGuessResult {
+  right: boolean
+  word?: string
+  points?: number
+  drawer_points?: number
+}

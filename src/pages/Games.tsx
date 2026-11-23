@@ -8,8 +8,8 @@ import { GAME_INFO } from '../lib/games'
 import type { ChessGame, Game, GameKind } from '../lib/types'
 import { Page, PageHeader } from '../components/ui'
 
-const ORDER: (GameKind | 'chess')[] = ['sea_battle', 'ludo', 'snakes', 'connect4', 'quiz', 'chess']
-const TINTS = ['from-peacock-soft', 'from-gold-soft', 'from-[#e6eddc]', 'from-blush', 'from-lavender', 'from-parchment']
+const ORDER: (GameKind | 'chess')[] = ['pictionary', 'sea_battle', 'ludo', 'snakes', 'connect4', 'quiz', 'chess']
+const TINTS = ['from-[#f6e3d3]', 'from-peacock-soft', 'from-gold-soft', 'from-[#e6eddc]', 'from-blush', 'from-lavender', 'from-parchment']
 
 /** The Games corner: every game, and whether it's waiting on you. */
 export default function Games() {
@@ -53,6 +53,11 @@ export default function Games() {
     }
     if (g.kind === 'sea_battle' && g.status === 'setup') {
       return g.state.ready?.[key] ? { text: `Waiting for ${partnerName}'s fleet`, tone: 'them' } : { text: 'Place your fleet ♡', tone: 'you' }
+    }
+    if (g.kind === 'pictionary') {
+      if (g.turn_id === me) return { text: g.state.phase === 'choosing' ? 'Pick a word to draw ♡' : 'Guess the drawing ♡', tone: 'you' }
+      if (g.state.drawer === key && g.state.phase === 'drawing') return { text: `${partnerName} is guessing`, tone: 'them' }
+      return { text: `${partnerName} is picking a word`, tone: 'them' }
     }
     if (g.kind === 'quiz') {
       return g.state.submitted?.[key] ? { text: `Waiting for ${partnerName}`, tone: 'them' } : { text: 'Your answers ♡', tone: 'you' }
